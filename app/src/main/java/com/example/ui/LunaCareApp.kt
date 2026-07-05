@@ -4780,6 +4780,11 @@ fun SettingsTab(
     var cycleLengthStr by remember { mutableStateOf(profile.averageCycleLength.toString()) }
     var periodLengthStr by remember { mutableStateOf(profile.averagePeriodLength.toString()) }
 
+    var displayNameStr by remember { mutableStateOf(profile.displayName ?: "") }
+    var birthYearStr by remember { mutableStateOf(profile.birthYear?.toString() ?: "") }
+    var genderModeSelected by remember { mutableStateOf(profile.genderMode) }
+    var userModeSelected by remember { mutableStateOf(profile.userMode) }
+
     var periodReminders by remember { mutableStateOf(profile.periodReminders) }
     var moodReminders by remember { mutableStateOf(profile.moodReminders) }
     var selfCareReminders by remember { mutableStateOf(profile.selfCareReminders) }
@@ -4813,6 +4818,143 @@ fun SettingsTab(
                     checked = profile.isDarkMode,
                     onCheckedChange = { viewModel.toggleDarkMode(it) }
                 )
+            }
+        }
+
+        // Profile configurations
+        Card(modifier = Modifier.fillMaxWidth().testTag("profile_card")) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Personal Profile 👤", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                
+                OutlinedTextField(
+                    value = displayNameStr,
+                    onValueChange = { displayNameStr = it },
+                    label = { Text("Display Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = birthYearStr,
+                    onValueChange = { birthYearStr = it },
+                    label = { Text("Year of Birth") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text("Gender identity:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("FEMALE", "MALE", "NON_BINARY").forEach { g ->
+                        val isSel = genderModeSelected == g
+                        val label = when (g) {
+                            "FEMALE" -> "Female"
+                            "MALE" -> "Male"
+                            else -> "Non-Binary"
+                        }
+                        Button(
+                            onClick = { genderModeSelected = g },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = if (isSel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                            ),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)
+                        ) {
+                            Text(label, fontSize = 11.sp)
+                        }
+                    }
+                }
+
+                Text("App Companion Mode:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("SELF_TRACKING", "SUPPORT_MODE", "EDUCATION_ONLY").forEach { mode ->
+                        val isSel = userModeSelected == mode
+                        val label = when (mode) {
+                            "SELF_TRACKING" -> "Self"
+                            "SUPPORT_MODE" -> "Support"
+                            else -> "Edu Only"
+                        }
+                        Button(
+                            onClick = { userModeSelected = mode },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isSel) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = if (isSel) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurfaceVariant
+                            ),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)
+                        ) {
+                            Text(label, fontSize = 11.sp)
+                        }
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        val year = birthYearStr.toIntOrNull()
+                        viewModel.updateProfile(
+                            displayName = displayNameStr,
+                            birthYear = year,
+                            genderMode = genderModeSelected,
+                            userMode = userModeSelected
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("save_profile_button")
+                ) {
+                    Text("Save Profile Changes")
+                }
+            }
+        }
+
+        // Subscription configurations
+        Card(
+            modifier = Modifier.fillMaxWidth().testTag("subscription_card"),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.25f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Star, null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("LunaCare Pro Subscription ⭐", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                }
+                Text(
+                    text = "Unlock deeper cycle projections, detailed medical history exports, secure backup, and advanced partner tracking companion widgets.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Current Tier: Free Plan", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("No active payment details on file.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Button(
+                            onClick = {
+                                android.widget.Toast.makeText(context, "Pro features simulated successfully!", android.widget.Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                        ) {
+                            Text("Activate Pro Trial", fontSize = 11.sp)
+                        }
+                    }
+                }
             }
         }
 
@@ -5382,6 +5524,19 @@ fun CareTab(profile: Profile, viewModel: LunaViewModel) {
                             Text("📍 Location Detected: $locationInput", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
                             Spacer(modifier = Modifier.height(2.dp))
                             Text("🏥 Recommended: $suggestedClinic", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            TextButton(
+                                onClick = {
+                                    gpsSimulated = false
+                                    locationInput = ""
+                                    suggestedClinic = ""
+                                },
+                                modifier = Modifier.align(Alignment.End).testTag("clear_location_btn")
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Clear Temporary Location", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
+                            }
                         }
                     }
                 }

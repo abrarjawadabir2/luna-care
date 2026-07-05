@@ -365,6 +365,8 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
             // Clear session memory key
             EncryptionHelper.clearSession()
             
+            _isGuestUser.value = false
+            _navigationHistory.value = emptyList()
             _isPinAuthenticated.value = false
             _loginError.value = null
             _captchaRequired.value = false
@@ -667,6 +669,25 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
                 current.copy(
                     averageCycleLength = cycleLength,
                     averagePeriodLength = periodLength
+                )
+            )
+        }
+    }
+
+    fun updateProfile(
+        displayName: String,
+        birthYear: Int?,
+        genderMode: String,
+        userMode: String
+    ) {
+        viewModelScope.launch {
+            val current = repository.getProfileSync() ?: Profile()
+            repository.saveProfile(
+                current.copy(
+                    displayName = displayName,
+                    birthYear = birthYear,
+                    genderMode = genderMode,
+                    userMode = userMode
                 )
             )
         }
