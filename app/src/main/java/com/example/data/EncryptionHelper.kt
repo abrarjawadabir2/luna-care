@@ -19,6 +19,8 @@ object EncryptionHelper {
         0xFE.toByte(), 0xDC.toByte(), 0xBA.toByte(), 0x09.toByte(), 0x87.toByte(), 0x65.toByte(), 0x43.toByte(), 0x21.toByte()
     )
 
+    private var cachedFallbackKey: ByteArray? = null
+
     fun setSessionKeyFromPassword(password: String, saltHex: String) {
         val salt = try {
             hexToByteArray(saltHex)
@@ -33,7 +35,11 @@ object EncryptionHelper {
     }
 
     fun getActiveKey(): ByteArray {
-        return sessionKey ?: deriveKey(fallbackKeyString, stableLocalSalt)
+        sessionKey?.let { return it }
+        cachedFallbackKey?.let { return it }
+        val key = deriveKey(fallbackKeyString, stableLocalSalt)
+        cachedFallbackKey = key
+        return key
     }
 
     fun deriveKey(password: String, salt: ByteArray): ByteArray {
@@ -59,9 +65,9 @@ object EncryptionHelper {
             val combined = ByteArray(iv.size + cipherTextBytes.size)
             System.arraycopy(iv, 0, combined, 0, iv.size)
             System.arraycopy(cipherTextBytes, 0, combined, iv.size, cipherTextBytes.size)
-            Base64.encodeToString(combined, Base64.DEFAULT)
+            Base64.encodeToString(combined, Base64.NO_WRAP)
         } catch (e: Exception) {
-            plainText // Fallback
+            null // Return null to indicate encryption failure
         }
     }
 
@@ -69,7 +75,7 @@ object EncryptionHelper {
         if (cipherText == null) return null
         if (cipherText.isEmpty()) return ""
         return try {
-            val combined = Base64.decode(cipherText, Base64.DEFAULT)
+            val combined = Base64.decode(cipherText, Base64.NO_WRAP)
             if (combined.size < 12) return cipherText
             val iv = ByteArray(12)
             System.arraycopy(combined, 0, iv, 0, 12)
@@ -84,7 +90,7 @@ object EncryptionHelper {
             val decryptedBytes = cipher.doFinal(cipherTextBytes)
             String(decryptedBytes, Charsets.UTF_8)
         } catch (e: Exception) {
-            cipherText // Fallback
+            null // Return null to indicate decryption failure (locked state or wrong key)
         }
     }
 

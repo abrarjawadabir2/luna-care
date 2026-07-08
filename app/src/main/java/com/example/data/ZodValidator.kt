@@ -111,14 +111,14 @@ object ZodValidator {
             errors.add(ZodError("displayName", "Display name is required"))
         }
 
-        if (password.length < 10) {
-            errors.add(ZodError("password", "Password must be at least 10 characters"))
+        if (password.length < 12) {
+            errors.add(ZodError("password", "Password must be at least 12 characters"))
         } else if (password == emailTrim) {
-            errors.add(ZodError("password", "Password must not match your email"))
+            errors.add(ZodError("password", "Password must not match your email address"))
         } else {
-            val commonWeaks = listOf("password123", "password1234", "1234567890", "qwertyuiop", "lunacare2026", "lunacare123")
+            val commonWeaks = listOf("password123", "password1234", "1234567890", "qwertyuiop", "lunacare2026", "lunacare123", "administrator", "guestpassword")
             if (commonWeaks.contains(password.lowercase())) {
-                errors.add(ZodError("password", "Password is a common weak password"))
+                errors.add(ZodError("password", "This password is too weak or commonly used. Please try a longer passphrase."))
             }
         }
 

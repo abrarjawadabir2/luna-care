@@ -165,6 +165,7 @@ data class UserCredentials(
     val passwordHash: String,          // PBKDF2 Hmac SHA-256 hash
     val passwordSalt: String,          // Unique salt per user
     val displayName: String,
+    val role: String = "user", // user, premium_user, moderator, medical_content_reviewer, support_agent, admin, super_admin
     val securityPinEnabled: Boolean = false,
     val securityPin: String = "",
     val isLoggedIn: Boolean = false,

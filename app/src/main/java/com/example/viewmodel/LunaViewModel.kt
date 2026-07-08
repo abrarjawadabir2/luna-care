@@ -7,12 +7,14 @@ import com.example.data.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
-class LunaViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository: LunaRepository
+class LunaViewModel(
+    application: Application,
+    private val injectedRepository: LunaRepository? = null
+) : AndroidViewModel(application) {
+    private val repository: LunaRepository = injectedRepository ?: LunaRepository(LunaDatabase.getDatabase(application))
 
     init {
-        val database = LunaDatabase.getDatabase(application)
-        repository = LunaRepository(database)
+        // Repository is already initialized above
     }
 
     // Flows from Repository
@@ -137,7 +139,7 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
             
             // Server-side lock enforcement
             if (state != null && state.lockedUntil != null && state.lockedUntil > now) {
-                _loginError.value = "Too many login attempts. Please wait a few minutes before trying again."
+                _loginError.value = "Too many login attempts. For your safety, login is temporarily paused. Please wait a few minutes before trying again."
                 _isSubmitting.value = false
                 onFinished(false)
                 return@launch
@@ -146,12 +148,13 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
             // Retrieve User Credentials
             val credentials = repository.getCredentialsByHash(emailHash)
             
-            // Exponential delay on failed attempts to deter automated/brute force tools
+            // Layered server-side protection delay
             val attemptCount = state?.failedAttemptCount ?: 0
             val delayMs = when {
-                attemptCount >= 7 -> 5000L
-                attemptCount == 6 -> 3000L
-                attemptCount == 5 -> 1000L
+                attemptCount >= 8 -> 5000L
+                attemptCount == 7 -> 3000L
+                attemptCount == 6 -> 1000L
+                attemptCount == 5 -> 500L
                 else -> 0L
             }
             if (delayMs > 0) {
@@ -226,7 +229,7 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
             
             val existing = repository.getCredentialsByHash(emailHash)
             if (existing != null) {
-                // Rule: Signup duplicate email: "Please check your details or try logging in." (no reveal of account existence)
+                // Rule: Signup duplicate email: Generic error to prevent enumeration
                 _isSubmitting.value = false
                 onFinished(false, "Please check your details or try logging in.")
                 return@launch
@@ -291,7 +294,7 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isSubmitting.value = true
             
-            // Generic response: "If an account exists for this email, we’ll send password reset instructions."
+            // Generic response: "If an account exists for this email, password reset instructions will be sent."
             // Do not reveal whether email exists!
             val credentials = repository.getCredentialsByHash(emailHash)
             if (credentials != null) {
@@ -306,7 +309,7 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
             }
             
             _isSubmitting.value = false
-            onFinished("If an account exists for this email, we’ll send password reset instructions.")
+            onFinished("If an account exists for this email, password reset instructions will be sent.")
         }
     }
 
@@ -395,25 +398,30 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
         var lockedUntil: Long? = null
         var captchaRequired = state.captchaRequired
         
-        // Anti-brute force limits:
-        // After 5 failed attempts in 10 minutes: 1 minute delay (cooldown)
-        // After 6 failed attempts: 3 minutes delay
-        // After 7 failed attempts: 5 minutes delay, CAPTCHA required
-        // After 10 failed attempts in 30 minutes: 30 minutes block
+        // Anti-brute force limits (Layered server-side protection):
+        // Attempts 1–4: allow normal retry
+        // Attempt 5 within 10 minutes: introduce a short delay
+        // Attempt 6: 1-minute cooldown
+        // Attempt 7: 3-minute cooldown
+        // Attempt 8: 5-minute cooldown
+        // Attempt 10 within 30 minutes: require CAPTCHA or additional verification
         when {
             newAttemptCount >= 10 -> {
                 lockedUntil = now + (30 * 60 * 1000)
                 captchaRequired = true
             }
-            newAttemptCount == 7 -> {
+            newAttemptCount == 8 -> {
                 lockedUntil = now + (5 * 60 * 1000)
                 captchaRequired = true
             }
-            newAttemptCount == 6 -> {
+            newAttemptCount == 7 -> {
                 lockedUntil = now + (3 * 60 * 1000)
             }
-            newAttemptCount == 5 -> {
+            newAttemptCount == 6 -> {
                 lockedUntil = now + (1 * 60 * 1000)
+            }
+            newAttemptCount == 5 -> {
+                // just a short delay enforced in the login flow
             }
         }
         

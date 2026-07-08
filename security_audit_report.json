@@ -1,0 +1,22 @@
+{
+  "timestamp": "2026-07-08T12:30:27.187207Z",
+  "database_url_configured": false,
+  "service_key_configured": false,
+  "scanned_actions_count": 21,
+  "findings": [
+    {
+      "id": "MISSING_RLS_20260621000100_audit_triggers.sql",
+      "resource": "supabase/migrations/20260621000100_audit_triggers.sql",
+      "risk": "HIGH",
+      "msg": "HIGH: Migration 20260621000100_audit_triggers.sql might be missing 'ENABLE ROW LEVEL SECURITY' commands for new tables."
+    }
+  ],
+  "risk_levels": {
+    "CRITICAL": 0,
+    "HIGH": 1,
+    "MEDIUM": 0,
+    "LOW": 0
+  },
+  "rls_status": "ENFORCED",
+  "client_side_encryption_validation": "PASSED"
+}

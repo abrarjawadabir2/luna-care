@@ -63,74 +63,52 @@ def run_security_audit():
         "client_side_encryption_validation": "PASSED"
     }
     
-    # 1. Simulate pulling the database audit logs or querying if keys are local
-    # In a real environment, this utilizessupabase REST client / postgres connection
-    # Let's generate synthetic audit test scenarios to ensure the pipeline script compiles and runs correctly.
-    simulated_audit_logs = [
-        {
-            "id": "e67b2d18-3561-4de8-99ee-79c836940a83",
-            "actor_user_id": "00000000-0000-0000-0000-000000000000",
-            "actor_role": "user",
-            "action": "role_upgrade",
-            "resource_type": "profile_role",
-            "resource_id": "92da1823-74ad-4fbc-bdfa-96da1fd69beb",
-            "ip": "192.168.1.50",
-            "user_agent": "Mozilla/5.0 Android App Client",
-            "metadata": {"requested_role": "admin", "reason": "requested by developer-test"},
-            "created_at": datetime.utcnow().isoformat()
-        },
-        {
-            "id": "18f9daef-6119-4cb3-a55d-eaeef1bd71cc",
-            "actor_user_id": "8481ff2e-ca28-4ce6-bf9c-662df9ff1aac",
-            "actor_role": "super_admin",
-            "action": "schema_change",
-            "resource_type": "database_table_policy",
-            "resource_id": "public.medical_journal_entries",
-            "ip": "10.0.2.2",
-            "user_agent": "Kube-Cron-Worker-9128",
-            "metadata": {"policy_added": "allow_unlimited_admin_read"},
-            "created_at": datetime.utcnow().isoformat()
-        }
-    ]
-    
-    report["scanned_actions_count"] = len(simulated_audit_logs)
-    
-    for log in simulated_audit_logs:
-        actor_role = log.get("actor_role")
-        action = log.get("action")
-        meta = log.get("metadata", {})
-        
-        # Risk Checks: Unauthorized role upgrades to administrative privileges
-        if action == "role_upgrade" and meta.get("requested_role") in ["admin", "super_admin"] and actor_role == "user":
-            finding = {
-                "id": log["id"],
-                "resource": log["resource_type"],
-                "risk": RISK_LEVEL_CRITICAL,
-                "msg": f"CRITICAL: User id {log['resource_id']} attempted to upgrade to administrative role '{meta.get('requested_role')}' without appropriate elevated authorization."
-            }
-            report["findings"].append(finding)
-            report["risk_levels"][RISK_LEVEL_CRITICAL] += 1
-            
-        # Risk Checks: Malicious table policy modifications bypassing RLS
-        elif action == "schema_change" and "unlimited" in str(meta).lower():
-            finding = {
-                "id": log["id"],
-                "resource": log["resource_type"],
-                "risk": RISK_LEVEL_HIGH,
-                "msg": f"HIGH: Suspicious schema level alteration on {log['resource_id']}. Policy configuration change detected that might undermine RLS data isolation."
-            }
-            report["findings"].append(finding)
-            report["risk_levels"][RISK_LEVEL_HIGH] += 1
-            
-        # Standard compliance action checks
-        else:
-            report["findings"].append({
-                "id": log["id"],
-                "resource": log["resource_type"],
-                "risk": RISK_LEVEL_LOW,
-                "msg": f"LOW: Routine systemic audit trace record mapped for activity: {action}"
-            })
-            report["risk_levels"][RISK_LEVEL_LOW] += 1
+    # 1. Scan for hardcoded service-role keys or master passwords in Kotlin files
+    scanned_files = []
+    for root, dirs, files in os.walk("app/src/main/java"):
+        for file in files:
+            if file.endswith(".kt"):
+                path = os.path.join(root, file)
+                scanned_files.append(path)
+                with open(path, "r") as f:
+                    content = f.read()
+                    if "SUPABASE_SERVICE_ROLE_KEY" in content or "service_role" in content.lower():
+                        report["findings"].append({
+                            "id": f"EXPOSED_KEY_{file}",
+                            "resource": path,
+                            "risk": RISK_LEVEL_CRITICAL,
+                            "msg": f"CRITICAL: Potential Supabase service-role key or privileged reference found in frontend file: {path}"
+                        })
+                        report["risk_levels"][RISK_LEVEL_CRITICAL] += 1
+                    
+                    if "master_password" in content.lower() or "admin_bypass" in content.lower():
+                        report["findings"].append({
+                            "id": f"BACKDOOR_{file}",
+                            "resource": path,
+                            "risk": RISK_LEVEL_CRITICAL,
+                            "msg": f"CRITICAL: Potential backdoor or authentication bypass parameter found in {path}"
+                        })
+                        report["risk_levels"][RISK_LEVEL_CRITICAL] += 1
+
+    # 2. Check Supabase migrations for RLS compliance
+    migration_path = "supabase/migrations"
+    if os.path.exists(migration_path):
+        for file in os.listdir(migration_path):
+            if file.endswith(".sql"):
+                path = os.path.join(migration_path, file)
+                with open(path, "r") as f:
+                    content = f.read()
+                    if "enable row level security" not in content.lower():
+                        report["findings"].append({
+                            "id": f"MISSING_RLS_{file}",
+                            "resource": path,
+                            "risk": RISK_LEVEL_HIGH,
+                            "msg": f"HIGH: Migration {file} might be missing 'ENABLE ROW LEVEL SECURITY' commands for new tables."
+                        })
+                        report["risk_levels"][RISK_LEVEL_HIGH] += 1
+
+    report["scanned_actions_count"] = len(scanned_files)
+
 
     # Print the findings to console for CI log trace
     print(f"Scanned {report['scanned_actions_count']} audit records.")

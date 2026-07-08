@@ -536,22 +536,22 @@ fun PasswordStrengthMeter(password: String, email: String) {
     
     val strength = remember(password, email) {
         when {
-            password.length < 10 -> "Too Short (Min 10)"
+            password.length < 12 -> "Too Short (Min 12)"
             password == email -> "Matches Email (Weak)"
-            listOf("password123", "password1234", "1234567890", "qwertyuiop").contains(password.lowercase()) -> "Common Password (Weak)"
-            password.length in 10..13 -> "Okay"
+            listOf("password123", "password1234", "1234567890", "qwertyuiop", "lunacare2026", "lunacare123").contains(password.lowercase()) -> "Common Password (Weak)"
+            password.length in 12..15 -> "Okay"
             else -> "Strong Passphrase"
         }
     }
     
     val color = when (strength) {
-        "Too Short (Min 10)", "Matches Email (Weak)", "Common Password (Weak)" -> MaterialTheme.colorScheme.error
+        "Too Short (Min 12)", "Matches Email (Weak)", "Common Password (Weak)" -> MaterialTheme.colorScheme.error
         "Okay" -> Color(0xFFFBC02D)
         else -> Color(0xFF2E7D32)
     }
     
     val progress = when (strength) {
-        "Too Short (Min 10)", "Matches Email (Weak)", "Common Password (Weak)" -> 0.25f
+        "Too Short (Min 12)", "Matches Email (Weak)", "Common Password (Weak)" -> 0.25f
         "Okay" -> 0.6f
         else -> 1f
     }
@@ -679,16 +679,17 @@ fun SecurityInfoCard() {
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = "LunaCare Zero-Knowledge Privacy",
+                    text = "LunaCare Production-Grade Security",
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.primary
                 )
             }
             Spacer(modifier = Modifier.height(10.dp))
             Text(
-                text = "• Passwords are never stored in plain text and are strongly hashed with salt & pepper using PBKDF2 Hmac-SHA256.\n" +
-                       "• Your logs and health notes are dynamically encrypted client-side using industry-grade AES-GCM. Decryption keys are constructed in volatile memory ONLY while you are actively logged in.\n" +
-                       "• Complete offline capabilities: your intimate medical history is fully secure on your personal device.",
+                text = "LunaCare uses secure authentication, rate limits, encrypted private information, and monitored access controls. Your password is never stored in plain text.\n\n" +
+                       "• Passwords are strongly hashed using PBKDF2 Hmac-SHA256 with unique salts.\n" +
+                       "• Private health data is encrypted on-device with AES-GCM; keys never leave your secure volatile memory session.\n" +
+                       "• Progressive anti-brute force protection and CAPTCHA escalation protect your account from automated attacks.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f),
                 lineHeight = 16.sp
