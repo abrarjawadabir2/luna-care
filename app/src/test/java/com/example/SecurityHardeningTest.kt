@@ -14,6 +14,10 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.CompletableDeferred
+import java.util.concurrent.Executors
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.runBlocking
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -23,14 +27,13 @@ class SecurityHardeningTest {
     private lateinit var db: LunaDatabase
     private lateinit var repository: LunaRepository
     private lateinit var viewModel: LunaViewModel
-    private val testDispatcher = StandardTestDispatcher()
+    private val testDispatcher = UnconfinedTestDispatcher()
 
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         val context = RuntimeEnvironment.getApplication()
         
-        // Use in-memory database for isolated testing
         db = Room.inMemoryDatabaseBuilder(context, LunaDatabase::class.java)
             .allowMainThreadQueries()
             .build()
@@ -75,10 +78,18 @@ class SecurityHardeningTest {
         val emailHash = EncryptionHelper.hashLookupValue(email)
         
         // Simulate 8 failures
-        // We use advanceUntilIdle() to ensure each login attempt finishes
         for (i in 1..8) {
-            viewModel.login(email, "wrongpassword") { }
-            advanceUntilIdle() 
+            val deferred = CompletableDeferred<Boolean>()
+            viewModel.login(email, "wrongpassword") { 
+                deferred.complete(it)
+            }
+            deferred.await() 
+            
+            // Fast-forward time / remove lock so the next attempt can proceed
+            val currentState = repository.getSecurityState(emailHash)
+            if (currentState != null && currentState.lockedUntil != null) {
+                repository.insertSecurityState(currentState.copy(lockedUntil = null))
+            }
         }
         
         val state = repository.getSecurityState(emailHash)
@@ -89,8 +100,11 @@ class SecurityHardeningTest {
 
     @Test
     fun `generic error messages do not reveal user existence`() = runTest(testDispatcher) {
-        viewModel.login("nonexistent@example.com", "anypassword") { }
-        advanceUntilIdle()
+        val deferred = CompletableDeferred<Boolean>()
+        viewModel.login("nonexistent@example.com", "anypassword") { 
+            deferred.complete(it)
+        }
+        deferred.await()
         
         val errorMessage = viewModel.loginError.value
         assertEquals("Email or password is incorrect. Please check your details and try again.", errorMessage)

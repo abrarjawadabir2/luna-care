@@ -7,7 +7,7 @@ import com.example.data.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
-class LunaViewModel(
+class LunaViewModel @JvmOverloads constructor(
     application: Application,
     private val injectedRepository: LunaRepository? = null
 ) : AndroidViewModel(application) {

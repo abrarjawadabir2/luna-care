@@ -5288,18 +5288,32 @@ fun SettingsTab(
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Self-Sovereignty & Security", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error))
 
+                val periodLogs by viewModel.periodLogs.collectAsState()
+                val moodLogs by viewModel.moodLogs.collectAsState()
+                val journalEntries by viewModel.journalEntries.collectAsState()
+
                 Button(
                     onClick = {
-                        // Export local JSON payload of data
-                        // Highly requested capability
-                        println("DEBUG: JSON Data Export successfully printed")
+                        val summary = com.example.util.ExportUtil.generateHealthLogsSummary(
+                            profile = profile,
+                            periodLogs = periodLogs,
+                            moodLogs = moodLogs,
+                            journalEntries = journalEntries
+                        )
+                        val sendIntent: android.content.Intent = android.content.Intent().apply {
+                            action = android.content.Intent.ACTION_SEND
+                            putExtra(android.content.Intent.EXTRA_TEXT, summary)
+                            type = "text/plain"
+                        }
+                        val shareIntent = android.content.Intent.createChooser(sendIntent, "Export Health Logs")
+                        context.startActivity(shareIntent)
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.secondary)
                 ) {
                     Icon(Icons.Default.Download, null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Export Data (JSON)")
+                    Text("Export Health Logs (Text Summary)")
                 }
 
                 Button(

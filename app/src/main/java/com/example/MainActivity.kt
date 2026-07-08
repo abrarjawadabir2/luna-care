@@ -12,7 +12,14 @@ import com.example.ui.theme.LunaCareTheme
 import com.example.viewmodel.LunaViewModel
 
 class MainActivity : ComponentActivity() {
-    private val viewModel: LunaViewModel by viewModels()
+    private val viewModel: LunaViewModel by viewModels {
+        object : androidx.lifecycle.ViewModelProvider.Factory {
+            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                @Suppress("UNCHECKED_CAST")
+                return LunaViewModel(application) as T
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
