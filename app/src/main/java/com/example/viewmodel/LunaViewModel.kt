@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 class LunaViewModel @JvmOverloads constructor(
     application: Application,
@@ -310,6 +311,155 @@ class LunaViewModel @JvmOverloads constructor(
             
             _isSubmitting.value = false
             onFinished("If an account exists for this email, password reset instructions will be sent.")
+        }
+    }
+
+    fun sendPhoneOtp(phone: String, onFinished: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            _isSubmitting.value = true
+            
+            val normalizedPhone = (if (phone.trim().startsWith("+")) "+" else "") + phone.replace(Regex("[^0-9]"), "")
+            if (normalizedPhone.length < 5) {
+                _isSubmitting.value = false
+                onFinished(false, "Invalid phone number format.")
+                return@launch
+            }
+            
+            val phoneHash = EncryptionHelper.hashLookupValue("phone_$normalizedPhone")
+            val state = repository.getSecurityState(phoneHash)
+            val now = System.currentTimeMillis()
+            
+            if (state != null && state.lockedUntil != null && state.lockedUntil > now) {
+                _isSubmitting.value = false
+                onFinished(false, "Too many requests. Please try again later.")
+                return@launch
+            }
+            
+            val attempts = (state?.failedAttemptCount ?: 0) + 1
+            val lockedUntil = if (attempts >= 5) now + 15 * 60 * 1000L else null
+            
+            val updatedState = AccountSecurityState(
+                emailHash = phoneHash,
+                failedAttemptCount = attempts,
+                firstFailedAt = state?.firstFailedAt ?: now,
+                lastFailedAt = now,
+                lockedUntil = lockedUntil,
+                captchaRequired = attempts >= 3,
+                updatedAt = now
+            )
+            repository.insertSecurityState(updatedState)
+            
+            if (attempts >= 5) {
+                _isSubmitting.value = false
+                onFinished(false, "Too many requests. Please try again later.")
+                return@launch
+            }
+            
+            delay(1000) // Simulate network delay
+            _isSubmitting.value = false
+            onFinished(true, null)
+        }
+    }
+
+    fun verifyPhoneOtp(phone: String, otp: String, onFinished: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            _isSubmitting.value = true
+            
+            val normalizedPhone = (if (phone.trim().startsWith("+")) "+" else "") + phone.replace(Regex("[^0-9]"), "")
+            
+            val phoneHash = EncryptionHelper.hashLookupValue("phone_$normalizedPhone")
+            val state = repository.getSecurityState(phoneHash)
+            val now = System.currentTimeMillis()
+            
+            if (state != null && state.lockedUntil != null && state.lockedUntil > now) {
+                _isSubmitting.value = false
+                onFinished(false, "Too many attempts. Please try again later.")
+                return@launch
+            }
+            
+            delay(1000) // Simulate network delay
+            
+            // Allow 123456 as a mock valid OTP since no real SMS provider is hooked up
+            if (otp == "123456") {
+                repository.deleteSecurityState(phoneHash)
+                
+                // Use a mock session key for phone auth
+                EncryptionHelper.setSessionKeyFromPassword("phone_$normalizedPhone", "phone_salt")
+                
+                val userHash = EncryptionHelper.hashLookupValue(normalizedPhone)
+                val credentials = repository.getCredentialsByHash(userHash)
+                
+                if (credentials == null) {
+                    val creds = UserCredentials(
+                        emailHash = userHash,
+                        encryptedEmail = EncryptionHelper.encryptSensitiveText(normalizedPhone) ?: "",
+                        passwordHash = "phone_auth",
+                        passwordSalt = "phone_salt",
+                        displayName = "User " + normalizedPhone.takeLast(4),
+                        isLoggedIn = true
+                    )
+                    repository.insertCredentials(creds)
+                    
+                    // Create base profile
+                    repository.saveProfile(
+                        Profile(
+                            id = 1,
+                            displayName = creds.displayName,
+                            acceptedDisclaimer = true,
+                            goals = emptyList()
+                        )
+                    )
+                } else {
+                    repository.loginUser(userHash)
+                }
+                
+                _isSubmitting.value = false
+                onFinished(true, null)
+            } else {
+                val attempts = (state?.failedAttemptCount ?: 0) + 1
+                val lockedUntil = if (attempts >= 5) now + 15 * 60 * 1000L else null
+                
+                val updatedState = AccountSecurityState(
+                    emailHash = phoneHash,
+                    failedAttemptCount = attempts,
+                    firstFailedAt = state?.firstFailedAt ?: now,
+                    lastFailedAt = now,
+                    lockedUntil = lockedUntil,
+                    captchaRequired = attempts >= 3,
+                    updatedAt = now
+                )
+                repository.insertSecurityState(updatedState)
+                
+                _isSubmitting.value = false
+                onFinished(false, "The verification code is invalid or expired. Request a new code and try again.")
+            }
+        }
+    }
+
+    fun continueWithGoogle(onFinished: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            _isSubmitting.value = true
+            delay(1000)
+            _isSubmitting.value = false
+            onFinished(false, "Google OAuth is not configured with valid Client ID in this environment.")
+        }
+    }
+
+    fun continueWithFacebook(onFinished: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            _isSubmitting.value = true
+            delay(1000)
+            _isSubmitting.value = false
+            onFinished(false, "Facebook OAuth is not configured with valid App ID in this environment.")
+        }
+    }
+
+    fun continueWithTikTok(onFinished: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            _isSubmitting.value = true
+            delay(1000)
+            _isSubmitting.value = false
+            onFinished(false, "TikTok Login Kit is not configured. Missing Client Key and Secret.")
         }
     }
 

@@ -9,6 +9,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import com.example.ui.LunaCareApp
 import com.example.ui.theme.LunaCareTheme
+import com.example.ui.ErrorBoundary
 import com.example.viewmodel.LunaViewModel
 
 class MainActivity : ComponentActivity() {
@@ -35,7 +36,9 @@ class MainActivity : ComponentActivity() {
             val isDarkTheme = profileState?.isDarkMode ?: false
 
             LunaCareTheme(darkTheme = isDarkTheme) {
-                LunaCareApp(viewModel = viewModel)
+                ErrorBoundary {
+                    LunaCareApp(viewModel = viewModel)
+                }
             }
         }
     }

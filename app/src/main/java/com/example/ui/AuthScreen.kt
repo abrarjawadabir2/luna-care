@@ -8,7 +8,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -34,22 +33,26 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.EncryptionHelper
+import kotlinx.coroutines.launch
 import com.example.viewmodel.LunaViewModel
 
 enum class AuthMode {
-    LOGIN, SIGNUP, FORGOT_PASSWORD
+    METHOD_SELECTOR, LOGIN, SIGNUP, FORGOT_PASSWORD, PHONE_INPUT, OTP_VERIFICATION
 }
 
 @Composable
 fun AuthScreen(viewModel: LunaViewModel) {
-    var authMode by remember { mutableStateOf(AuthMode.LOGIN) }
+    var authMode by remember { mutableStateOf(AuthMode.METHOD_SELECTOR) }
     
     // Inputs
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var displayName by remember { mutableStateOf("") }
+    var phoneNumber by remember { mutableStateOf("") }
+    var countryCode by remember { mutableStateOf("+1") }
+    var countryMenuExpanded by remember { mutableStateOf(false) }
+    var otpCode by remember { mutableStateOf("") }
     
     // UI state
     var passwordVisible by remember { mutableStateOf(false) }
@@ -104,17 +107,8 @@ fun AuthScreen(viewModel: LunaViewModel) {
                 color = MaterialTheme.colorScheme.primary
             )
             
-            Text(
-                text = "Your holistic, secure companion for intimate well-being",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-            )
-            
             Spacer(modifier = Modifier.height(28.dp))
             
-            // Render specific forms depending on mode
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -130,272 +124,573 @@ fun AuthScreen(viewModel: LunaViewModel) {
                     modifier = Modifier.padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(
-                        text = when(authMode) {
-                            AuthMode.LOGIN -> "Welcome Back"
-                            AuthMode.SIGNUP -> "Create Account"
-                            AuthMode.FORGOT_PASSWORD -> "Reset Access"
-                        },
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    
-                    Spacer(modifier = Modifier.height(18.dp))
-                    
-                    // Display security notification alerts
-                    if (loginError != null) {
-                        SecurityErrorCard(message = loginError ?: "")
-                        Spacer(modifier = Modifier.height(16.dp))
-                    } else if (inputError != null) {
-                        SecurityErrorCard(message = inputError ?: "")
-                        Spacer(modifier = Modifier.height(16.dp))
-                    } else if (successNotification != null) {
-                        SuccessCard(message = successNotification ?: "")
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-                    
-                    // --- EMAIL INPUT ---
-                    OutlinedTextField(
-                        value = email,
-                        onValueChange = { 
-                            email = it
-                            inputError = null
-                        },
-                        label = { Text("Email Address") },
-                        leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("email_input"),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                        )
-                    )
-                    
-                    Spacer(modifier = Modifier.height(12.dp))
-                    
-                    if (authMode == AuthMode.SIGNUP) {
-                        // --- DISPLAY NAME INPUT (Signup only) ---
-                        OutlinedTextField(
-                            value = displayName,
-                            onValueChange = { 
-                                displayName = it
-                                inputError = null
-                            },
-                            label = { Text("Your Display Name") },
-                            leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("display_name_input"),
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                    when (authMode) {
+                        AuthMode.METHOD_SELECTOR -> {
+                            Text(
+                                text = "Create your LunaCare account",
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.Center
                             )
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                    }
-                    
-                    if (authMode != AuthMode.FORGOT_PASSWORD) {
-                        // --- PASSWORD INPUT ---
-                        OutlinedTextField(
-                            value = password,
-                            onValueChange = { 
-                                password = it
-                                inputError = null
-                            },
-                            label = { Text("Password") },
-                            leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
-                            trailingIcon = {
-                                IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                    Icon(
-                                        imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                        contentDescription = "Toggle password visibility"
-                                    )
-                                }
-                            },
-                            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("password_input"),
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Choose how you would like to continue.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                        )
-                        
-                        if (authMode == AuthMode.SIGNUP) {
-                            // Password strength meter
-                            PasswordStrengthMeter(password = password, email = email)
+                            Spacer(modifier = Modifier.height(24.dp))
                             
-                            Spacer(modifier = Modifier.height(12.dp))
-                            
-                            // --- CONFIRM PASSWORD INPUT ---
-                            OutlinedTextField(
-                                value = confirmPassword,
-                                onValueChange = { 
-                                    confirmPassword = it
+                            // Social Buttons
+                            SocialAuthButton(
+                                text = "Continue with Google",
+                                icon = Icons.Default.Email, // Placeholder for Google icon
+                                onClick = {
                                     inputError = null
-                                },
-                                label = { Text("Confirm Password") },
-                                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
-                                trailingIcon = {
-                                    IconButton(onClick = { confirmVisible = !confirmVisible }) {
-                                        Icon(
-                                            imageVector = if (confirmVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                            contentDescription = "Toggle password visibility"
-                                        )
+                                    viewModel.continueWithGoogle { success, err ->
+                                        if (!success) inputError = err
                                     }
                                 },
-                                visualTransformation = if (confirmVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                isSubmitting = isSubmitting
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            SocialAuthButton(
+                                text = "Continue with Facebook",
+                                icon = Icons.Default.ThumbUp, // Placeholder for Facebook icon
+                                onClick = {
+                                    inputError = null
+                                    viewModel.continueWithFacebook { success, err ->
+                                        if (!success) inputError = err
+                                    }
+                                },
+                                isSubmitting = isSubmitting
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            SocialAuthButton(
+                                text = "Continue with TikTok (Not configured)",
+                                icon = Icons.Default.PlayArrow, // Placeholder for TikTok icon
+                                onClick = {
+                                    inputError = null
+                                    viewModel.continueWithTikTok { success, err ->
+                                        if (!success) inputError = err
+                                    }
+                                },
+                                enabled = false,
+                                isSubmitting = isSubmitting
+                            )
+                            
+                            Spacer(modifier = Modifier.height(24.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                Text(
+                                    text = "or continue with",
+                                    modifier = Modifier.padding(horizontal = 12.dp),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                            }
+                            Spacer(modifier = Modifier.height(24.dp))
+                            
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                OutlinedButton(
+                                    onClick = { authMode = AuthMode.SIGNUP },
+                                    modifier = Modifier.weight(1f).height(48.dp),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Email")
+                                }
+                                OutlinedButton(
+                                    onClick = { authMode = AuthMode.PHONE_INPUT },
+                                    modifier = Modifier.weight(1f).height(48.dp),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Phone")
+                                }
+                            }
+                            
+                            if (inputError != null) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                SecurityErrorCard(message = inputError ?: "")
+                            }
+                            
+                            Spacer(modifier = Modifier.height(24.dp))
+                            Text(
+                                text = "Already have an account? Log in",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .clickable { authMode = AuthMode.LOGIN }
+                                    .testTag("login_link")
+                                    .padding(8.dp)
+                            )
+                        }
+                        
+                        AuthMode.LOGIN, AuthMode.SIGNUP, AuthMode.FORGOT_PASSWORD -> {
+                            Text(
+                                text = when(authMode) {
+                                    AuthMode.LOGIN -> "Log in to your account"
+                                    AuthMode.SIGNUP -> "Create Account"
+                                    AuthMode.FORGOT_PASSWORD -> "Reset Access"
+                                    else -> ""
+                                },
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            
+                            Spacer(modifier = Modifier.height(18.dp))
+                            
+                            // Display security notification alerts
+                            if (loginError != null) {
+                                SecurityErrorCard(message = loginError ?: "")
+                                Spacer(modifier = Modifier.height(16.dp))
+                            } else if (inputError != null) {
+                                SecurityErrorCard(message = inputError ?: "")
+                                Spacer(modifier = Modifier.height(16.dp))
+                            } else if (successNotification != null) {
+                                SuccessCard(message = successNotification ?: "")
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
+                            
+                            // --- EMAIL INPUT ---
+                            OutlinedTextField(
+                                value = email,
+                                onValueChange = { 
+                                    email = it
+                                    inputError = null
+                                },
+                                label = { Text("Email Address") },
+                                leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .testTag("confirm_password_input"),
+                                    .testTag("email_input"),
                                 singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = MaterialTheme.colorScheme.primary,
                                     unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
                                 )
                             )
-                        }
-                        
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-                    
-                    // Slide-to-Verify CAPTCHA if required
-                    if (captchaRequiredState && !captchaVerified) {
-                        CaptchaSlider(onVerified = { captchaVerified = true })
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-                    
-                    // --- ACTION BUTTON ---
-                    Button(
-                        onClick = {
-                            inputError = null
-                            successNotification = null
                             
-                            // 1. Check captcha if required
-                            if (captchaRequiredState && !captchaVerified) {
-                                inputError = "Security verification is required. Please slide the slider."
-                                return@Button
+                            Spacer(modifier = Modifier.height(12.dp))
+                            
+                            if (authMode == AuthMode.SIGNUP) {
+                                // --- DISPLAY NAME INPUT (Signup only) ---
+                                OutlinedTextField(
+                                    value = displayName,
+                                    onValueChange = { 
+                                        displayName = it
+                                        inputError = null
+                                    },
+                                    label = { Text("Your Display Name") },
+                                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("display_name_input"),
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                                    )
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
                             }
                             
-                            when (authMode) {
-                                AuthMode.LOGIN -> {
-                                    if (email.isEmpty() || password.isEmpty()) {
-                                        inputError = "Email and password are required."
-                                    } else {
-                                        viewModel.login(email, password) { success ->
-                                            if (!success) {
-                                                captchaVerified = false // reset captcha on fail
+                            if (authMode != AuthMode.FORGOT_PASSWORD) {
+                                // --- PASSWORD INPUT ---
+                                OutlinedTextField(
+                                    value = password,
+                                    onValueChange = { 
+                                        password = it
+                                        inputError = null
+                                    },
+                                    label = { Text("Password") },
+                                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                                    trailingIcon = {
+                                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                            Icon(
+                                                imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                contentDescription = "Toggle password visibility"
+                                            )
+                                        }
+                                    },
+                                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("password_input"),
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                                    )
+                                )
+                                
+                                if (authMode == AuthMode.SIGNUP) {
+                                    // Password strength meter
+                                    PasswordStrengthMeter(password = password, email = email)
+                                    
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    
+                                    // --- CONFIRM PASSWORD INPUT ---
+                                    OutlinedTextField(
+                                        value = confirmPassword,
+                                        onValueChange = { 
+                                            confirmPassword = it
+                                            inputError = null
+                                        },
+                                        label = { Text("Confirm Password") },
+                                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                                        trailingIcon = {
+                                            IconButton(onClick = { confirmVisible = !confirmVisible }) {
+                                                Icon(
+                                                    imageVector = if (confirmVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                    contentDescription = "Toggle password visibility"
+                                                )
+                                            }
+                                        },
+                                        visualTransformation = if (confirmVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("confirm_password_input"),
+                                        singleLine = true,
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                                        )
+                                    )
+                                }
+                                
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
+                            
+                            // Slide-to-Verify CAPTCHA if required
+                            if (captchaRequiredState && !captchaVerified) {
+                                CaptchaSlider(onVerified = { captchaVerified = true })
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
+                            
+                            // --- ACTION BUTTON ---
+                            Button(
+                                onClick = {
+                                    inputError = null
+                                    successNotification = null
+                                    
+                                    // 1. Check captcha if required
+                                    if (captchaRequiredState && !captchaVerified) {
+                                        inputError = "Security verification is required. Please slide the slider."
+                                        return@Button
+                                    }
+                                    
+                                    when (authMode) {
+                                        AuthMode.LOGIN -> {
+                                            if (email.isEmpty() || password.isEmpty()) {
+                                                inputError = "Email and password are required."
+                                            } else {
+                                                viewModel.login(email, password) { success ->
+                                                    if (!success) {
+                                                        captchaVerified = false // reset captcha on fail
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        AuthMode.SIGNUP -> {
+                                            if (password != confirmPassword) {
+                                                inputError = "Passwords do not match."
+                                                return@Button
+                                            }
+                                            viewModel.register(email, password, confirmPassword, displayName) { success, err ->
+                                                if (!success) {
+                                                    inputError = err ?: "Unable to create the account. Please check your information and try again."
+                                                    captchaVerified = false
+                                                }
+                                            }
+                                        }
+                                        AuthMode.FORGOT_PASSWORD -> {
+                                            if (email.isEmpty()) {
+                                                inputError = "Please enter your email."
+                                            } else {
+                                                viewModel.forgotPassword(email) { msg ->
+                                                    successNotification = msg
+                                                }
+                                            }
+                                        }
+                                        else -> {}
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(50.dp)
+                                    .testTag("auth_action_button"),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                shape = RoundedCornerShape(14.dp),
+                                enabled = !isSubmitting
+                            ) {
+                                if (isSubmitting) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Text(
+                                        text = when(authMode) {
+                                            AuthMode.LOGIN -> "Log in"
+                                            AuthMode.SIGNUP -> "Create Account"
+                                            AuthMode.FORGOT_PASSWORD -> "Send Verification Link"
+                                            else -> ""
+                                        },
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                                    )
+                                }
+                            }
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            // Switch modes & Forgot password text
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (authMode == AuthMode.LOGIN) {
+                                    Text(
+                                        text = "Forgot Password?",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier
+                                            .clickable { authMode = AuthMode.FORGOT_PASSWORD }
+                                            .testTag("forgot_password_link")
+                                    )
+                                    
+                                    Text(
+                                        text = "Back to methods",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.secondary,
+                                        modifier = Modifier
+                                            .clickable { authMode = AuthMode.METHOD_SELECTOR }
+                                    )
+                                } else {
+                                    Text(
+                                        text = "Back",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier
+                                            .clickable { authMode = AuthMode.METHOD_SELECTOR }
+                                            .fillMaxWidth(),
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        }
+                        
+                        AuthMode.PHONE_INPUT -> {
+                            Text(
+                                text = "Continue with Phone",
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(18.dp))
+                            
+                            if (inputError != null) {
+                                SecurityErrorCard(message = inputError ?: "")
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
+                            
+                            OutlinedTextField(
+                                value = phoneNumber,
+                                onValueChange = { phoneNumber = it },
+                                label = { Text("Phone Number") },
+                                leadingIcon = {
+                                    Box {
+                                        Row(
+                                            modifier = Modifier
+                                                .clickable { countryMenuExpanded = true }
+                                                .padding(horizontal = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(text = countryCode, style = MaterialTheme.typography.bodyLarge)
+                                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Country")
+                                        }
+                                        DropdownMenu(
+                                            expanded = countryMenuExpanded,
+                                            onDismissRequest = { countryMenuExpanded = false }
+                                        ) {
+                                            listOf("+1", "+44", "+91", "+61", "+81", "+49", "+33", "+86").forEach { code ->
+                                                DropdownMenuItem(
+                                                    text = { Text(code) },
+                                                    onClick = {
+                                                        countryCode = code
+                                                        countryMenuExpanded = false
+                                                    }
+                                                )
                                             }
                                         }
                                     }
-                                }
-                                AuthMode.SIGNUP -> {
-                                    viewModel.register(email, password, confirmPassword, displayName) { success, err ->
-                                        if (!success) {
-                                            inputError = err ?: "Registration failed."
-                                            captchaVerified = false
-                                        }
-                                    }
-                                }
-                                AuthMode.FORGOT_PASSWORD -> {
-                                    if (email.isEmpty()) {
-                                        inputError = "Please enter your email."
-                                    } else {
-                                        viewModel.forgotPassword(email) { msg ->
-                                            successNotification = msg
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp)
-                            .testTag("auth_action_button"),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        shape = RoundedCornerShape(14.dp),
-                        enabled = !isSubmitting
-                    ) {
-                        if (isSubmitting) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Text(
-                                text = when(authMode) {
-                                    AuthMode.LOGIN -> "Login Securely"
-                                    AuthMode.SIGNUP -> "Create My Account"
-                                    AuthMode.FORGOT_PASSWORD -> "Send Verification Link"
                                 },
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                            )
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    // Switch modes & Forgot password text
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (authMode == AuthMode.LOGIN) {
-                            Text(
-                                text = "Forgot Password?",
-                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier
-                                    .clickable { authMode = AuthMode.FORGOT_PASSWORD }
-                                    .testTag("forgot_password_link")
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
                             )
                             
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            if (captchaRequiredState && !captchaVerified) {
+                                CaptchaSlider(onVerified = { captchaVerified = true })
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
+                            
+                            Button(
+                                onClick = {
+                                    inputError = null
+                                    if (captchaRequiredState && !captchaVerified) {
+                                        inputError = "Security verification is required."
+                                        return@Button
+                                    }
+                                    if (phoneNumber.length < 5) {
+                                        inputError = "Please enter a valid phone number"
+                                    } else {
+                                        viewModel.sendPhoneOtp(countryCode + phoneNumber) { success, err ->
+                                            if (success) {
+                                                inputError = null
+                                                authMode = AuthMode.OTP_VERIFICATION
+                                            } else {
+                                                inputError = err ?: "Failed to send code."
+                                                captchaVerified = false
+                                            }
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().height(50.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                shape = RoundedCornerShape(14.dp),
+                                enabled = !isSubmitting
+                            ) {
+                                if (isSubmitting) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Text("Send Code", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                                }
+                            }
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                text = "Sign Up",
-                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.secondary,
-                                modifier = Modifier
-                                    .clickable { authMode = AuthMode.SIGNUP }
-                                    .testTag("sign_up_link")
-                            )
-                        } else if (authMode == AuthMode.SIGNUP) {
-                            Text(
-                                text = "Already have an account? Login",
+                                text = "Back",
                                 style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier
-                                    .clickable { authMode = AuthMode.LOGIN }
-                                    .testTag("login_link")
+                                    .clickable { authMode = AuthMode.METHOD_SELECTOR }
                                     .fillMaxWidth(),
                                 textAlign = TextAlign.Center
                             )
-                        } else {
+                        }
+                        
+                        AuthMode.OTP_VERIFICATION -> {
                             Text(
-                                text = "Back to Login",
-                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier
-                                    .clickable { authMode = AuthMode.LOGIN }
-                                    .testTag("back_to_login_link")
-                                    .fillMaxWidth(),
-                                textAlign = TextAlign.Center
+                                text = "Enter Verification Code",
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface
                             )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Code sent to ${phoneNumber.take(3)}••••${phoneNumber.takeLast(2)}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(24.dp))
+                            
+                            if (inputError != null) {
+                                SecurityErrorCard(message = inputError ?: "")
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
+                            
+                            OutlinedTextField(
+                                value = otpCode,
+                                onValueChange = { if (it.length <= 6) otpCode = it },
+                                label = { Text("6-digit code") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            Button(
+                                onClick = {
+                                    inputError = null
+                                    if (otpCode.length == 6) {
+                                        viewModel.verifyPhoneOtp(countryCode + phoneNumber, otpCode) { success, err ->
+                                            if (!success) {
+                                                inputError = err ?: "Invalid verification code."
+                                            }
+                                        }
+                                    } else {
+                                        inputError = "The verification code is invalid or expired. Request a new code and try again."
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().height(50.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                shape = RoundedCornerShape(14.dp),
+                                enabled = !isSubmitting
+                            ) {
+                                if (isSubmitting) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Text("Verify and Continue", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                                }
+                            }
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(
+                                    text = "Resend Code",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.clickable {
+                                        if (isSubmitting) return@clickable
+                                        viewModel.sendPhoneOtp(countryCode + phoneNumber) { success, err ->
+                                            if (!success) {
+                                                inputError = err ?: "Rate limit active. Please wait."
+                                            } else {
+                                                inputError = null
+                                                successNotification = "Code resent."
+                                            }
+                                        }
+                                    }
+                                )
+                                Text(
+                                    text = "Change Number",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier.clickable { authMode = AuthMode.PHONE_INPUT }
+                                )
+                            }
                         }
                     }
                 }
             }
             
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                Text(text = "Privacy Policy", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable {})
+                Text(text = " • ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = "Terms and Disclaimer", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable {})
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
             
             // Guest mode / Continue offline companion button
             OutlinedButton(
@@ -421,6 +716,30 @@ fun AuthScreen(viewModel: LunaViewModel) {
             // Privacy Informational Card
             SecurityInfoCard()
         }
+    }
+}
+
+@Composable
+fun SocialAuthButton(text: String, icon: ImageVector, onClick: () -> Unit, enabled: Boolean = true, isSubmitting: Boolean = false) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().height(48.dp),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        enabled = enabled && !isSubmitting
+    ) {
+        if (isSubmitting) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                color = MaterialTheme.colorScheme.primary,
+                strokeWidth = 2.dp
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+        } else {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(12.dp))
+        }
+        Text(text, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium))
     }
 }
 
@@ -686,7 +1005,7 @@ fun SecurityInfoCard() {
             }
             Spacer(modifier = Modifier.height(10.dp))
             Text(
-                text = "LunaCare uses secure authentication, rate limits, encrypted private information, and monitored access controls. Your password is never stored in plain text.\n\n" +
+                text = "Your password is never stored in plain text. Social providers never share your provider password with LunaCare.\n\n" +
                        "• Passwords are strongly hashed using PBKDF2 Hmac-SHA256 with unique salts.\n" +
                        "• Private health data is encrypted on-device with AES-GCM; keys never leave your secure volatile memory session.\n" +
                        "• Progressive anti-brute force protection and CAPTCHA escalation protect your account from automated attacks.",
