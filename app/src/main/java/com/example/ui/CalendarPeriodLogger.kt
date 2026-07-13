@@ -59,6 +59,9 @@ fun CalendarPeriodLogger(
     val symptomsList = listOf("Cramps", "Headache", "Back pain", "Breast tenderness", "Acne", "Fatigue", "Bloating", "Nausea", "Mood swings", "Anxiety", "Low mood", "Irritability", "Sleep issues")
     var selectedSymptoms by remember { mutableStateOf(setOf<String>()) }
     var notes by remember { mutableStateOf("") }
+    var painLevel by remember { mutableStateOf<Int?>(null) }
+    var productUsed by remember { mutableStateOf<String?>(null) }
+    var changedProductFrequency by remember { mutableStateOf<String?>(null) }
     
     // Save success banner state
     var showSuccessMessage by remember { mutableStateOf(false) }
@@ -378,10 +381,11 @@ fun CalendarPeriodLogger(
                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onSurface
             )
-            val levels = listOf("Spotting", "Light", "Medium", "Heavy")
-            Row(
+            val levels = listOf("Spotting", "Light", "Medium", "Heavy", "Very heavy")
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 levels.forEach { level ->
                     val isSelected = flowLevel == level
@@ -390,11 +394,10 @@ fun CalendarPeriodLogger(
                     
                     Box(
                         modifier = Modifier
-                            .weight(1f)
                             .clip(RoundedCornerShape(8.dp))
                             .background(itemBg)
                             .clickable { flowLevel = level }
-                            .padding(vertical = 8.dp),
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -404,6 +407,70 @@ fun CalendarPeriodLogger(
                             fontWeight = FontWeight.Bold
                         )
                     }
+                }
+            }
+            
+            if (flowLevel == "Very heavy" || selectedSymptoms.any { it in listOf("Dizziness", "Fainting", "Severe pain", "Fever", "Bad odor") }) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Warning, contentDescription = "Warning", tint = MaterialTheme.colorScheme.onErrorContainer)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "LunaCare cannot diagnose the cause. These symptoms may require professional medical attention.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+            }
+            
+            // Product used
+            Text(
+                text = "Product Used", 
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            val productsList = listOf("Pad", "Period panty", "Menstrual cup", "Tampon", "Cloth", "Other", "Prefer not to say")
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                productsList.forEach { product ->
+                    val isSelected = productUsed == product
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { productUsed = if (isSelected) null else product },
+                        label = { Text(product, fontSize = 11.sp) }
+                    )
+                }
+            }
+            
+            // Change Frequency
+            Text(
+                text = "Change Frequency", 
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            val frequencyList = listOf("Every 1 hour", "Every 2–3 hours", "Every 4–6 hours", "Less often", "Not sure")
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                frequencyList.forEach { freq ->
+                    val isSelected = changedProductFrequency == freq
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { changedProductFrequency = if (isSelected) null else freq },
+                        label = { Text(freq, fontSize = 11.sp) }
+                    )
                 }
             }
 
@@ -469,7 +536,10 @@ fun CalendarPeriodLogger(
                             endDate = selectedEndDate?.format(DateTimeFormatter.ofPattern("yyyy-MM-dd")),
                             flowLevel = flowLevel,
                             symptoms = selectedSymptoms.toList(),
-                            notes = if (notes.isBlank()) null else notes
+                            notes = if (notes.isBlank()) null else notes,
+                            painLevel = painLevel,
+                            productUsed = productUsed,
+                            changedProductFrequency = changedProductFrequency
                         )
                         // Trigger Success Indicator
                         showSuccessMessage = true
@@ -479,6 +549,9 @@ fun CalendarPeriodLogger(
                         flowLevel = "Medium"
                         selectedSymptoms = emptySet()
                         notes = ""
+                        painLevel = null
+                        productUsed = null
+                        changedProductFrequency = null
                         onLogSaved()
                     }
                 },

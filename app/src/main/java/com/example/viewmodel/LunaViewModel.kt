@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.*
+import com.example.security.HashUtils
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -127,8 +128,15 @@ class LunaViewModel @JvmOverloads constructor(
     // --- Production-Grade Authentication Flows ---
 
     fun login(email: String, password: String, onFinished: (Boolean) -> Unit = {}) {
+        val validationResult = ZodValidator.validateLogin(email, password)
+        if (!validationResult.success) {
+            _loginError.value = "Email or password is incorrect. Please check your details and try again."
+            onFinished(false)
+            return
+        }
+
         val trimmedEmail = email.trim()
-        val emailHash = EncryptionHelper.hashLookupValue(trimmedEmail)
+        val emailHash = HashUtils.hashForLookup(HashUtils.normalizeEmail(trimmedEmail), HashUtils.HashPurpose.EMAIL_LOOKUP)
         
         viewModelScope.launch {
             _isSubmitting.value = true
@@ -199,8 +207,8 @@ class LunaViewModel @JvmOverloads constructor(
             // Log security event (Audit Log)
             val successEvent = LoginSecurityEvent(
                 emailHash = emailHash,
-                ipHash = EncryptionHelper.hashLookupValue("127.0.0.1"), // salted hash of mock local IP
-                userAgentHash = EncryptionHelper.hashLookupValue("AndroidAppletDevice"),
+                ipHash = HashUtils.hashForRateLimit("127.0.0.1", HashUtils.HashPurpose.IP_RATE_LIMIT), // salted hash of mock local IP
+                userAgentHash = HashUtils.hashForRateLimit("AndroidAppletDevice", HashUtils.HashPurpose.USER_AGENT_RATE_LIMIT),
                 eventType = "LOGIN_SUCCESS",
                 metadata = "Login successful for masked email ${EncryptionHelper.maskEmail(trimmedEmail)}"
             )
@@ -222,7 +230,7 @@ class LunaViewModel @JvmOverloads constructor(
         }
         
         val trimmedEmail = email.trim()
-        val emailHash = EncryptionHelper.hashLookupValue(trimmedEmail)
+        val emailHash = HashUtils.hashForLookup(HashUtils.normalizeEmail(trimmedEmail), HashUtils.HashPurpose.EMAIL_LOOKUP)
         
         viewModelScope.launch {
             _isSubmitting.value = true
@@ -275,8 +283,8 @@ class LunaViewModel @JvmOverloads constructor(
             // Log security event
             val event = LoginSecurityEvent(
                 emailHash = emailHash,
-                ipHash = EncryptionHelper.hashLookupValue("127.0.0.1"),
-                userAgentHash = EncryptionHelper.hashLookupValue("AndroidAppletDevice"),
+                ipHash = HashUtils.hashForRateLimit("127.0.0.1", HashUtils.HashPurpose.IP_RATE_LIMIT),
+                userAgentHash = HashUtils.hashForRateLimit("AndroidAppletDevice", HashUtils.HashPurpose.USER_AGENT_RATE_LIMIT),
                 eventType = "LOGIN_SUCCESS",
                 metadata = "Account registered successfully for masked email ${EncryptionHelper.maskEmail(trimmedEmail)}"
             )
@@ -284,13 +292,14 @@ class LunaViewModel @JvmOverloads constructor(
             
             _isPinAuthenticated.value = true
             _isSubmitting.value = false
+            currentMockOtp = (100000..999999).random().toString()
             onFinished(true, null)
         }
     }
 
     fun forgotPassword(email: String, onFinished: (String) -> Unit) {
         val trimmedEmail = email.trim()
-        val emailHash = EncryptionHelper.hashLookupValue(trimmedEmail)
+        val emailHash = HashUtils.hashForLookup(HashUtils.normalizeEmail(trimmedEmail), HashUtils.HashPurpose.EMAIL_LOOKUP)
         
         viewModelScope.launch {
             _isSubmitting.value = true
@@ -301,8 +310,8 @@ class LunaViewModel @JvmOverloads constructor(
             if (credentials != null) {
                 val event = LoginSecurityEvent(
                     emailHash = emailHash,
-                    ipHash = EncryptionHelper.hashLookupValue("127.0.0.1"),
-                    userAgentHash = EncryptionHelper.hashLookupValue("AndroidAppletDevice"),
+                    ipHash = HashUtils.hashForRateLimit("127.0.0.1", HashUtils.HashPurpose.IP_RATE_LIMIT),
+                    userAgentHash = HashUtils.hashForRateLimit("AndroidAppletDevice", HashUtils.HashPurpose.USER_AGENT_RATE_LIMIT),
                     eventType = "PASSWORD_RESET_REQUESTED",
                     metadata = "Password reset instructions requested."
                 )
@@ -325,7 +334,7 @@ class LunaViewModel @JvmOverloads constructor(
                 return@launch
             }
             
-            val phoneHash = EncryptionHelper.hashLookupValue("phone_$normalizedPhone")
+            val phoneHash = HashUtils.hashForRateLimit(HashUtils.normalizePhone(normalizedPhone), HashUtils.HashPurpose.PHONE_RATE_LIMIT)
             val state = repository.getSecurityState(phoneHash)
             val now = System.currentTimeMillis()
             
@@ -357,17 +366,19 @@ class LunaViewModel @JvmOverloads constructor(
             
             delay(1000) // Simulate network delay
             _isSubmitting.value = false
+            currentMockOtp = (100000..999999).random().toString()
             onFinished(true, null)
         }
     }
 
+    private var currentMockOtp: String? = null
     fun verifyPhoneOtp(phone: String, otp: String, onFinished: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
             _isSubmitting.value = true
             
             val normalizedPhone = (if (phone.trim().startsWith("+")) "+" else "") + phone.replace(Regex("[^0-9]"), "")
             
-            val phoneHash = EncryptionHelper.hashLookupValue("phone_$normalizedPhone")
+            val phoneHash = HashUtils.hashForRateLimit(HashUtils.normalizePhone(normalizedPhone), HashUtils.HashPurpose.PHONE_RATE_LIMIT)
             val state = repository.getSecurityState(phoneHash)
             val now = System.currentTimeMillis()
             
@@ -380,13 +391,13 @@ class LunaViewModel @JvmOverloads constructor(
             delay(1000) // Simulate network delay
             
             // Allow 123456 as a mock valid OTP since no real SMS provider is hooked up
-            if (otp == "123456") {
+            if (otp.length == 6 && otp == currentMockOtp) {
                 repository.deleteSecurityState(phoneHash)
                 
                 // Use a mock session key for phone auth
                 EncryptionHelper.setSessionKeyFromPassword("phone_$normalizedPhone", "phone_salt")
                 
-                val userHash = EncryptionHelper.hashLookupValue(normalizedPhone)
+                val userHash = HashUtils.hashForLookup(HashUtils.normalizePhone(normalizedPhone), HashUtils.HashPurpose.PHONE_LOOKUP)
                 val credentials = repository.getCredentialsByHash(userHash)
                 
                 if (credentials == null) {
@@ -414,7 +425,8 @@ class LunaViewModel @JvmOverloads constructor(
                 }
                 
                 _isSubmitting.value = false
-                onFinished(true, null)
+                currentMockOtp = (100000..999999).random().toString()
+            onFinished(true, null)
             } else {
                 val attempts = (state?.failedAttemptCount ?: 0) + 1
                 val lockedUntil = if (attempts >= 5) now + 15 * 60 * 1000L else null
@@ -465,7 +477,7 @@ class LunaViewModel @JvmOverloads constructor(
 
     fun resetPassword(email: String, newPassword: String, confirm: String, onFinished: (Boolean, String?) -> Unit) {
         val trimmedEmail = email.trim()
-        val emailHash = EncryptionHelper.hashLookupValue(trimmedEmail)
+        val emailHash = HashUtils.hashForLookup(HashUtils.normalizeEmail(trimmedEmail), HashUtils.HashPurpose.EMAIL_LOOKUP)
         
         val validationResult = ZodValidator.validateSignup(trimmedEmail, newPassword, confirm, "User")
         if (!validationResult.success) {
@@ -498,14 +510,15 @@ class LunaViewModel @JvmOverloads constructor(
             
             val event = LoginSecurityEvent(
                 emailHash = emailHash,
-                ipHash = EncryptionHelper.hashLookupValue("127.0.0.1"),
-                userAgentHash = EncryptionHelper.hashLookupValue("AndroidAppletDevice"),
+                ipHash = HashUtils.hashForRateLimit("127.0.0.1", HashUtils.HashPurpose.IP_RATE_LIMIT),
+                userAgentHash = HashUtils.hashForRateLimit("AndroidAppletDevice", HashUtils.HashPurpose.USER_AGENT_RATE_LIMIT),
                 eventType = "PASSWORD_RESET_SUCCESS",
                 metadata = "Password reset completed successfully."
             )
             repository.insertSecurityEvent(event)
             
             _isSubmitting.value = false
+            currentMockOtp = (100000..999999).random().toString()
             onFinished(true, null)
         }
     }
@@ -526,8 +539,8 @@ class LunaViewModel @JvmOverloads constructor(
             
             val event = LoginSecurityEvent(
                 emailHash = null,
-                ipHash = EncryptionHelper.hashLookupValue("127.0.0.1"),
-                userAgentHash = EncryptionHelper.hashLookupValue("AndroidAppletDevice"),
+                ipHash = HashUtils.hashForRateLimit("127.0.0.1", HashUtils.HashPurpose.IP_RATE_LIMIT),
+                userAgentHash = HashUtils.hashForRateLimit("AndroidAppletDevice", HashUtils.HashPurpose.USER_AGENT_RATE_LIMIT),
                 eventType = "LOGOUT",
                 metadata = "User initiated secure logout from session."
             )
@@ -589,8 +602,8 @@ class LunaViewModel @JvmOverloads constructor(
         // Log secure events
         val failedEvent = LoginSecurityEvent(
             emailHash = emailHash,
-            ipHash = EncryptionHelper.hashLookupValue("127.0.0.1"),
-            userAgentHash = EncryptionHelper.hashLookupValue("AndroidAppletDevice"),
+            ipHash = HashUtils.hashForRateLimit("127.0.0.1", HashUtils.HashPurpose.IP_RATE_LIMIT),
+            userAgentHash = HashUtils.hashForRateLimit("AndroidAppletDevice", HashUtils.HashPurpose.USER_AGENT_RATE_LIMIT),
             eventType = "LOGIN_FAILED",
             metadata = "Failed login attempt $newAttemptCount. Locked until: $lockedUntil"
         )
@@ -599,8 +612,8 @@ class LunaViewModel @JvmOverloads constructor(
         if (lockedUntil != null) {
             val lockEvent = LoginSecurityEvent(
                 emailHash = emailHash,
-                ipHash = EncryptionHelper.hashLookupValue("127.0.0.1"),
-                userAgentHash = EncryptionHelper.hashLookupValue("AndroidAppletDevice"),
+                ipHash = HashUtils.hashForRateLimit("127.0.0.1", HashUtils.HashPurpose.IP_RATE_LIMIT),
+                userAgentHash = HashUtils.hashForRateLimit("AndroidAppletDevice", HashUtils.HashPurpose.USER_AGENT_RATE_LIMIT),
                 eventType = if (newAttemptCount >= 10) "ACCOUNT_LOCKED_TEMPORARILY" else "RATE_LIMIT_TRIGGERED",
                 metadata = "Rate limit lock triggered."
             )
@@ -610,8 +623,8 @@ class LunaViewModel @JvmOverloads constructor(
         if (captchaRequired && !state.captchaRequired) {
             val captchaEvent = LoginSecurityEvent(
                 emailHash = emailHash,
-                ipHash = EncryptionHelper.hashLookupValue("127.0.0.1"),
-                userAgentHash = EncryptionHelper.hashLookupValue("AndroidAppletDevice"),
+                ipHash = HashUtils.hashForRateLimit("127.0.0.1", HashUtils.HashPurpose.IP_RATE_LIMIT),
+                userAgentHash = HashUtils.hashForRateLimit("AndroidAppletDevice", HashUtils.HashPurpose.USER_AGENT_RATE_LIMIT),
                 eventType = "CAPTCHA_REQUIRED",
                 metadata = "Captcha required state triggered."
             )
@@ -885,8 +898,28 @@ class LunaViewModel @JvmOverloads constructor(
         endDate: String?,
         flowLevel: String,
         symptoms: List<String>,
-        notes: String?
+        notes: String?,
+        painLevel: Int? = null,
+        productUsed: String? = null,
+        changedProductFrequency: String? = null
     ) {
+        val validationResult = ZodValidator.validatePeriodLog(
+            startDate = startDate,
+            endDate = endDate,
+            flowLevel = flowLevel,
+            symptoms = symptoms,
+            notes = notes,
+            painLevel = painLevel,
+            productUsed = productUsed,
+            changedProductFrequency = changedProductFrequency
+        )
+        
+        if (!validationResult.success) {
+            // Depending on architecture, log error or throw exception.
+            // For now, silently return or perhaps use a flow to emit an error state.
+            return
+        }
+        
         viewModelScope.launch {
             repository.insertPeriodLog(
                 PeriodLog(
@@ -894,7 +927,10 @@ class LunaViewModel @JvmOverloads constructor(
                     endDate = endDate,
                     flowLevel = flowLevel,
                     symptoms = symptoms,
-                    notes = notes
+                    notes = notes,
+                    painLevel = painLevel,
+                    productUsed = productUsed,
+                    changedProductFrequency = changedProductFrequency
                 )
             )
         }

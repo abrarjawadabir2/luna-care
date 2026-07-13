@@ -23,7 +23,7 @@ import androidx.room.TypeConverters
         LoginSecurityEvent::class,
         AccountSecurityState::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 @TypeConverters(Converters::class)

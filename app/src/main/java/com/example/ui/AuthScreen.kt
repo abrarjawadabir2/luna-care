@@ -240,6 +240,17 @@ fun AuthScreen(viewModel: LunaViewModel) {
                                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onSurface
                             )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = when(authMode) {
+                                    AuthMode.LOGIN -> "Sign in securely to continue your LunaCare journey."
+                                    AuthMode.SIGNUP -> "Join LunaCare to start your journey."
+                                    AuthMode.FORGOT_PASSWORD -> "We'll send you instructions to reset your password."
+                                    else -> ""
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                             
                             Spacer(modifier = Modifier.height(18.dp))
                             
@@ -494,6 +505,12 @@ fun AuthScreen(viewModel: LunaViewModel) {
                                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onSurface
                             )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "We'll send a one-time code to verify this number. Standard SMS charges may apply.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                             Spacer(modifier = Modifier.height(18.dp))
                             
                             if (inputError != null) {
@@ -599,10 +616,16 @@ fun AuthScreen(viewModel: LunaViewModel) {
                                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onSurface
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = "Code sent to ${phoneNumber.take(3)}••••${phoneNumber.takeLast(2)}",
                                 style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Enter the 6-digit code. For security, codes expire after a short time.",
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Spacer(modifier = Modifier.height(24.dp))
@@ -688,6 +711,27 @@ fun AuthScreen(viewModel: LunaViewModel) {
                 Text(text = "Privacy Policy", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable {})
                 Text(text = " • ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(text = "Terms and Disclaimer", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable {})
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Security, contentDescription = "Security", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "LunaCare uses secure authentication, rate limits, encrypted private information, and monitored access controls. Your password is never stored in plain text.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
             
             Spacer(modifier = Modifier.height(16.dp))
