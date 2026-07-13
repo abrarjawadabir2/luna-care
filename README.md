@@ -1,3 +1,4 @@
+````markdown
 <div align="center">
 
 # LunaCare
@@ -241,3 +242,261 @@ Install the following before opening the project:
 ```bash
 git clone https://github.com/abrarjawadabir2/luna-care-security-review.git
 cd luna-care-security-review
+````
+
+### 2. Open the project
+
+1. Launch Android Studio.
+2. Select **Open**.
+3. Choose the cloned project directory.
+4. Wait for Gradle synchronization to complete.
+5. Allow Android Studio to install required SDK components if prompted.
+
+### 3. Configure the environment
+
+Create a file named `.env` in the project root:
+
+```env
+GEMINI_API_KEY=your_gemini_api_key
+```
+
+Use `.env.example` as a reference when available.
+
+Never commit the real `.env` file or production credentials.
+
+Confirm `.gitignore` includes:
+
+```gitignore
+.env
+.env.*
+!.env.example
+local.properties
+*.jks
+*.keystore
+```
+
+### 4. Configure the debug build
+
+If Android Studio reports a signing-configuration error, review:
+
+```text
+app/build.gradle.kts
+```
+
+For local development only, remove or correct the following line when it references a missing configuration:
+
+```kotlin
+signingConfig = signingConfigs.getByName("debugConfig")
+```
+
+Do not remove a valid production signing configuration.
+
+### 5. Run the application
+
+1. Start an Android emulator or connect a physical Android device.
+2. Enable USB debugging when using a physical device.
+3. Select the target device in Android Studio.
+4. Click **Run**.
+
+---
+
+## Build from the Command Line
+
+### macOS or Linux
+
+```bash
+./gradlew assembleDebug
+```
+
+### Windows
+
+```powershell
+gradlew.bat assembleDebug
+```
+
+The debug APK is normally generated inside:
+
+```text
+app/build/outputs/apk/debug/
+```
+
+---
+
+## Testing
+
+Run local unit tests:
+
+### macOS or Linux
+
+```bash
+./gradlew test
+```
+
+### Windows
+
+```powershell
+gradlew.bat test
+```
+
+Run Android instrumentation tests with an emulator or connected device:
+
+```bash
+./gradlew connectedAndroidTest
+```
+
+Security testing should verify:
+
+* Users cannot access another user’s health records
+* OTP requests and verification attempts are rate-limited separately
+* Authentication errors do not expose whether an account exists
+* Passwords and OTPs never appear in logs
+* Exact GPS is not stored by default
+* Private data is not automatically sent to the AI assistant
+* Administrator privileges cannot be controlled from the client
+* File uploads cannot execute code or cross user boundaries
+* Service-role keys and server secrets are absent from application builds
+
+---
+
+## Recommended Branch Workflow
+
+The `main` branch should remain protected.
+
+Create a separate branch for each update:
+
+```bash
+git checkout main
+git pull origin main
+git checkout -b feature/update-name
+```
+
+Commit the changes:
+
+```bash
+git add .
+git commit -m "feat: describe the LunaCare update"
+git push -u origin feature/update-name
+```
+
+Then open a pull request and merge it after review and successful checks.
+
+Recommended protections:
+
+* Require a pull request before merging
+* Block force pushes
+* Restrict branch deletion
+* Require resolved review conversations
+* Require successful security checks when CI is configured
+* Use squash merging for a clean history
+
+---
+
+## Environment Variables
+
+Only public configuration may be included in client-visible code.
+
+Example:
+
+```env
+GEMINI_API_KEY=
+```
+
+Authentication-provider, database, SMS, signing, and security secrets must be stored in secure server-side or deployment secret storage.
+
+Never commit:
+
+* API secrets
+* Service-role keys
+* OAuth client secrets
+* SMS-provider secrets
+* Signing keys
+* Database passwords
+* Private encryption keys
+
+---
+
+## Medical Disclaimer
+
+LunaCare is intended for educational, organisational, and general wellbeing purposes.
+
+It does not:
+
+* Diagnose medical conditions
+* Provide emergency medical treatment
+* Replace a doctor, nurse, counsellor, or licensed medical professional
+* Guarantee the accuracy of cycle predictions
+* Make clinical decisions on behalf of users
+
+Users experiencing severe bleeding, fainting, intense pain, breathing difficulty, pregnancy-related concerns, self-harm risk, or another emergency should contact an appropriate local emergency or medical service.
+
+---
+
+## Privacy Principles
+
+LunaCare is designed around the following principles:
+
+1. Collect only information necessary for a selected feature.
+2. Keep location access disabled by default.
+3. Do not store exact location unless explicitly required and consented to.
+4. Do not expose one user’s information to another user.
+5. Do not send private health data to AI automatically.
+6. Do not store authentication credentials in application tables.
+7. Use secure backend validation and authorization.
+8. Provide clear deletion, logout, and session-control options.
+9. Keep crisis-support access available without a paywall.
+10. Never use hidden backdoors to access private user information.
+
+---
+
+## Development Status
+
+LunaCare is under active development.
+
+Before a production release, the application should complete:
+
+* Security review
+* Privacy review
+* Medical-content review
+* Row Level Security testing
+* Dependency audit
+* Secret scanning
+* Accessibility testing
+* Authentication-provider configuration
+* Production signing
+* Crisis-support resource verification
+* Terms and Privacy Policy review
+
+---
+
+## Contributing
+
+Contributions should follow the protected-branch workflow.
+
+Before submitting a pull request:
+
+1. Keep changes focused.
+2. Do not overwrite unrelated files.
+3. Do not commit secrets.
+4. Run the test suite.
+5. Check the project build.
+6. Document security-sensitive changes in the pull request.
+7. Avoid adding new dependencies unless necessary.
+8. Preserve the LunaCare design and privacy principles.
+
+---
+
+## Project Links
+
+* **GitHub:** [https://github.com/abrarjawadabir2/luna-care-security-review](https://github.com/abrarjawadabir2/luna-care-security-review)
+* **Google AI Studio:** [https://ai.studio/apps/ae458a1a-d802-40d6-bc03-0bca9bce51af](https://ai.studio/apps/ae458a1a-d802-40d6-bc03-0bca9bce51af)
+
+---
+
+<div align="center">
+
+### LunaCare
+
+Built with a focus on privacy, safety, accessibility, and respectful health education.
+
+</div>
+```
