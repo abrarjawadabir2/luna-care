@@ -2,6 +2,7 @@ package com.example
 
 import androidx.room.Room
 import com.example.data.*
+import com.example.security.HashUtils
 import com.example.viewmodel.LunaViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -75,7 +76,7 @@ class SecurityHardeningTest {
     @Test
     fun `brute force protection triggers CAPTCHA after 8 failures`() = runTest(testDispatcher) {
         val email = "victim@example.com"
-        val emailHash = EncryptionHelper.hashLookupValue(email)
+        val emailHash = HashUtils.hashForLookup(HashUtils.normalizeEmail(email), HashUtils.HashPurpose.EMAIL_LOOKUP)
         
         // Simulate 8 failures
         for (i in 1..8) {

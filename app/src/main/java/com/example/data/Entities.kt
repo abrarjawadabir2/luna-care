@@ -85,9 +85,12 @@ data class PeriodLog(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val startDate: String, // YYYY-MM-DD
     val endDate: String?,  // YYYY-MM-DD, nullable
-    val flowLevel: String, // Spotting, Light, Medium, Heavy
+    val flowLevel: String, // Spotting, Light, Medium, Heavy, Very heavy
     val symptoms: List<String>,
-    val notes: String?
+    val notes: String?,
+    val painLevel: Int? = null,
+    val productUsed: String? = null,
+    val changedProductFrequency: String? = null
 )
 
 @Entity(tableName = "mood_logs")

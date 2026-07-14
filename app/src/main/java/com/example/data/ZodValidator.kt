@@ -132,4 +132,76 @@ object ZodValidator {
             errors = errors
         )
     }
+    data class PeriodLogSchema(
+        val startDate: String,
+        val endDate: String?,
+        val flowLevel: String,
+        val symptoms: List<String>,
+        val notes: String?,
+        val painLevel: Int?,
+        val productUsed: String?,
+        val changedProductFrequency: String?
+    )
+    
+    fun validatePeriodLog(
+        startDate: String,
+        endDate: String?,
+        flowLevel: String,
+        symptoms: List<String>,
+        notes: String?,
+        painLevel: Int?,
+        productUsed: String?,
+        changedProductFrequency: String?
+    ): ZodResult<PeriodLogSchema> {
+        val errors = mutableListOf<ZodError>()
+        
+        // Date regex YYYY-MM-DD
+        val dateRegex = Regex("^\\d{4}-\\d{2}-\\d{2}$")
+        if (!startDate.matches(dateRegex)) {
+            errors.add(ZodError("startDate", "Invalid start date format (YYYY-MM-DD)"))
+        }
+        if (endDate != null && !endDate.matches(dateRegex)) {
+            errors.add(ZodError("endDate", "Invalid end date format (YYYY-MM-DD)"))
+        }
+        
+        // Enum validation
+        val validFlowLevels = listOf("Spotting", "Light", "Medium", "Heavy", "Very heavy")
+        if (!validFlowLevels.contains(flowLevel)) {
+            errors.add(ZodError("flowLevel", "Invalid flow level"))
+        }
+        
+        val validSymptoms = listOf("Cramps", "Headache", "Back pain", "Breast tenderness", "Acne", "Fatigue", "Bloating", "Nausea", "Mood swings", "Anxiety", "Low mood", "Irritability", "Sleep issues", "Dizziness", "Fainting", "Severe pain", "Fever", "Bad odor", "Pregnancy concern")
+        symptoms.forEach {
+            if (!validSymptoms.contains(it)) {
+                errors.add(ZodError("symptoms", "Invalid symptom: $it"))
+            }
+        }
+        
+        if (painLevel != null && (painLevel < 0 || painLevel > 10)) {
+            errors.add(ZodError("painLevel", "Pain level must be between 0 and 10"))
+        }
+        
+        val validProducts = listOf("Pad", "Period panty", "Menstrual cup", "Tampon", "Cloth", "Other", "Prefer not to say")
+        if (productUsed != null && !validProducts.contains(productUsed)) {
+            errors.add(ZodError("productUsed", "Invalid product used"))
+        }
+        
+        val validFrequencies = listOf("Every 1 hour", "Every 2–3 hours", "Every 4–6 hours", "Less often", "Not sure")
+        if (changedProductFrequency != null && !validFrequencies.contains(changedProductFrequency)) {
+            errors.add(ZodError("changedProductFrequency", "Invalid frequency"))
+        }
+        
+        if (notes != null && notes.length > 1000) {
+            errors.add(ZodError("notes", "Notes too long (max 1000 chars)"))
+        }
+
+        if (errors.isNotEmpty()) {
+            return ZodResult(success = false, errors = errors)
+        }
+        
+        return ZodResult(
+            success = true,
+            data = PeriodLogSchema(startDate, endDate, flowLevel, symptoms, notes, painLevel, productUsed, changedProductFrequency)
+        )
+    }
 }

@@ -2560,6 +2560,10 @@ fun CycleTab(
                 }
             )
         }
+        
+        item {
+            FlowInformationComponent()
+        }
 
         // Visual Cycle Calendar Card
         item {
@@ -3018,6 +3022,8 @@ fun CycleTab(
                 periodLogs = periodLogs,
                 onLogSaved = { showLogDialog = false }
             )
+            Spacer(modifier = Modifier.height(16.dp))
+            FlowInformationComponent()
         }
     }
 }
