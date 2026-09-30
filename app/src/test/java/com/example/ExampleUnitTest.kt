@@ -1,18 +1,9 @@
 package com.example
 
-import android.content.Context
-import androidx.test.core.app.ApplicationProvider
 import com.example.data.CycleUtils
-import com.example.data.EncryptionHelper
-import com.example.data.ZodValidator
 import org.junit.Assert.*
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
 
-@RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
 class ExampleUnitTest {
   @Test
   fun addition_isCorrect() {
@@ -48,56 +39,5 @@ class ExampleUnitTest {
 
     val phase4 = CycleUtils.getCyclePhase(cycleDay = 21, cycleLength = 28, periodLength = 5)
     assertEquals("Luteal Phase", phase4)
-  }
-
-  @Test
-  fun testEncryptionAndDecryption() {
-    val sensitiveText = "My private health journal entry"
-    val encrypted = com.example.data.EncryptionHelper.encryptSensitiveText(sensitiveText)
-    assertNotNull(encrypted)
-    assertNotEquals(sensitiveText, encrypted)
-
-    val decrypted = com.example.data.EncryptionHelper.decryptSensitiveText(encrypted)
-    assertEquals(sensitiveText, decrypted)
-  }
-
-  @Test
-  fun testEmailMaskingAndHashing() {
-    val email = "alex.care@gmail.com"
-    val masked = com.example.data.EncryptionHelper.maskEmail(email)
-    assertEquals("a***@gmail.com", masked)
-
-    val hashed = com.example.data.EncryptionHelper.hashLookupValue(email)
-    assertNotNull(hashed)
-    assertEquals(64, hashed.length) // SHA-256 hex string is 64 characters long
-  }
-
-  @Test
-  fun testZodAuthenticationValidation() {
-    val weakResult = com.example.data.ZodValidator.validateSignup(
-        email = "user@test.com",
-        password = "short",
-        confirm = "short",
-        displayName = "User"
-    )
-    assertFalse(weakResult.success)
-    assertNotNull(weakResult.getFieldError("password"))
-
-    val mismatchResult = com.example.data.ZodValidator.validateSignup(
-        email = "user@test.com",
-        password = "longsecurepassword123",
-        confirm = "differentpwd",
-        displayName = "User"
-    )
-    assertFalse(mismatchResult.success)
-    assertEquals("Passwords do not match", mismatchResult.getFieldError("confirm"))
-
-    val successResult = com.example.data.ZodValidator.validateSignup(
-        email = "user@test.com",
-        password = "highlysecurepassphrase2026",
-        confirm = "highlysecurepassphrase2026",
-        displayName = "Test User"
-    )
-    assertTrue(successResult.success)
   }
 }

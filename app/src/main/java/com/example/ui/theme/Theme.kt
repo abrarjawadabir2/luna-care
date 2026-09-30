@@ -1,10 +1,14 @@
 package com.example.ui.theme
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
     primary = MutedRoseLight,
@@ -21,34 +25,17 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = PrimaryColor,
-    onPrimary = OnPrimary,
-    primaryContainer = PrimaryContainerColor,
-    onPrimaryContainer = OnPrimaryContainer,
-    inversePrimary = InversePrimary,
-    secondary = SecondaryColor,
-    onSecondary = OnSecondary,
-    secondaryContainer = SecondaryContainerColor,
-    onSecondaryContainer = OnSecondaryContainer,
-    tertiary = TertiaryColor,
-    onTertiary = OnTertiary,
-    tertiaryContainer = TertiaryContainerColor,
-    onTertiaryContainer = OnTertiaryContainer,
-    background = BackgroundColor,
-    onBackground = OnBackgroundColor,
-    surface = SurfaceColor,
-    onSurface = OnSurface,
-    surfaceVariant = SurfaceVariantColor,
-    onSurfaceVariant = OnSurfaceVariant,
-    outline = OutlineColor,
-    outlineVariant = OutlineVariant,
-    error = ErrorColor,
-    onError = OnError,
-    errorContainer = ErrorContainer,
-    onErrorContainer = OnErrorContainer,
-    inverseSurface = InverseSurface,
-    inverseOnSurface = InverseOnSurface,
-    surfaceTint = SurfaceTint
+    primary = MutedRosePrimary,
+    secondary = LavenderSecondary,
+    tertiary = WarmCoralTertiary,
+    background = SoftCreamBackground,
+    surface = SoftCardSurface,
+    onPrimary = SoftCardSurface,
+    onSecondary = SoftCardSurface,
+    onTertiary = SoftCardSurface,
+    onBackground = DarkPlumText,
+    onSurface = DarkPlumText,
+    error = AlertRed
 )
 
 @Composable

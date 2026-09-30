@@ -1,0 +1,26 @@
+# Set default behavior to automatically normalize line endings
+* text=auto eol=lf
+
+# Source code and scripts
+*.kt text diff=kotlin
+*.kts text diff=kotlin
+*.java text diff=java
+*.xml text
+*.json text
+*.md text
+*.properties text
+*.pro text
+*.gradle text
+*.yml text
+*.yaml text
+*.sh text eol=lf
+*.bat text eol=crlf
+
+# Binary files
+*.png binary
+*.webp binary
+*.jpg binary
+*.jpeg binary
+*.keystore binary
+*.jar binary
+*.so binary

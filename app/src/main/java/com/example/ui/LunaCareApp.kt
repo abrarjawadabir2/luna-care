@@ -1,21 +1,19 @@
 package com.example.ui
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.foundation.shape.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.Help
-import androidx.compose.material.icons.automirrored.outlined.Input
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -38,242 +36,363 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.example.data.*
 import com.example.ui.theme.*
 import com.example.viewmodel.LunaViewModel
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
-enum class AppTab(val title: String, val icon: ImageVector) {
+// ==========================================
+// NAVIGATION TABS BY USER MODE
+// ==========================================
+
+enum class SelfTrackingTab(val title: String, val icon: ImageVector) {
     Home("Home", Icons.Default.Favorite),
     Cycle("Cycle", Icons.Default.CalendarMonth),
     Mood("Wellbeing", Icons.Default.Mood),
-    Learn("Learn", Icons.Default.School),
     Journal("Journal", Icons.Default.Create),
-    Support("Support", Icons.Default.Spa),
-    Care("Care", Icons.Default.ShoppingCart),
+    Learn("Learn", Icons.Default.School),
+    Care("Care", Icons.Default.LocalPharmacy)
+}
+
+enum class SupportTab(val title: String, val icon: ImageVector) {
+    Home("Home", Icons.Default.Favorite),
+    Support("Support", Icons.Default.VolunteerActivism),
+    Learn("Learn", Icons.Default.School),
+    Care("Care", Icons.Default.LocalPharmacy),
+    Notes("Notes", Icons.Default.StickyNote2),
     Settings("Settings", Icons.Default.Settings)
 }
+
+enum class EducationTab(val title: String, val icon: ImageVector) {
+    Home("Home", Icons.Default.Favorite),
+    Learn("Learn", Icons.Default.School),
+    Care("Care", Icons.Default.LocalPharmacy),
+    Mind("Mind", Icons.Default.SelfImprovement),
+    Settings("Settings", Icons.Default.Settings)
+}
+
+// ==========================================
+// ROOT APP COMPOSABLE
+// ==========================================
 
 @Composable
 fun LunaCareApp(viewModel: LunaViewModel) {
     val profileState by viewModel.profile.collectAsState()
     val isPinAuthenticated by viewModel.isPinAuthenticated.collectAsState()
-    val showCrisisScreen by viewModel.showCrisisScreen.collectAsState()
-    val loggedInCredentials by viewModel.loggedInCredentials.collectAsState()
-    val isGuestUser by viewModel.isGuestUser.collectAsState()
+    val isGuest by viewModel.isGuestUser.collectAsState()
 
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
-    ) {
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         when {
-            // 0. If NOT logged in and NOT in Guest mode -> Show Auth Screen
-            loggedInCredentials == null && !isGuestUser -> {
-                AuthScreen(viewModel = viewModel)
+            profileState == null && !isGuest -> {
+                // First launch: show opening/onboarding
+                OnboardingRootScreen(viewModel = viewModel)
             }
-
-            // 1. If Profile is not set up -> Show Onboarding Screen
-            profileState == null -> {
-                OnboardingScreen(onCompleted = { name, birthYear, cycleLength, periodLength, goals, pin, userMode, genderMode, bodyRelevantMode, supportRel, consent, sharedTrackingConsent, behaviourFocuses, medRem, waterRem ->
-                    viewModel.onboardUser(
-                        name = name,
-                        birthYear = birthYear,
-                        cycleLength = cycleLength,
-                        periodLength = periodLength,
-                        goals = goals,
-                        pin = pin,
-                        userMode = userMode,
-                        genderMode = genderMode,
-                        bodyRelevantMode = bodyRelevantMode,
-                        supportRelationship = supportRel,
-                        consentConfirmed = consent,
-                        sharedTrackingConsent = sharedTrackingConsent,
-                        behaviourFocuses = behaviourFocuses,
-                        medicineReminders = medRem,
-                        waterReminders = waterRem
-                    )
-                })
-            }
-
-            // 2. If Security PIN is enabled but NOT authenticated -> Show Pin Screen
-            profileState?.securityPinEnabled == true && !isPinAuthenticated -> {
+            (profileState?.securityPinEnabled == true) && !isPinAuthenticated && !isGuest -> {
                 PinAuthScreen(
                     storedPin = profileState?.securityPin ?: "",
                     onAuthenticated = { viewModel.authenticatePin(it) }
                 )
             }
-
-            // 3. Otherwise -> Show Main App Layout
             else -> {
-                val profile = profileState ?: Profile()
-                MainAppLayout(
-                    profile = profile,
-                    viewModel = viewModel
-                )
+                val profile = profileState ?: Profile(userMode = UserMode.EDUCATION_ONLY.name)
+                MainAppLayout(profile = profile, viewModel = viewModel)
             }
         }
-    }
-
-    // Global Emergency Overlay Interceptor
-    if (showCrisisScreen) {
-        AlertDialog(
-            onDismissRequest = { viewModel.dismissCrisisDialog() },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Crisis Support & Safety Notice",
-                        color = MaterialTheme.colorScheme.error,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            },
-            text = {
-                Column {
-                    Text(
-                        text = "You deserve support right now. Please contact emergency services, a crisis hotline, or someone you trust immediately.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-                    Text(
-                        text = "We care about your safety. If you are experiencing distress, please reach out. This app is for general educational help only and is not a substitute for clinical therapy.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
-                        )
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = "📞 Immediate Support: Call or Text 988",
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Or call 911 / visit your nearest Emergency Department.",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = { viewModel.dismissCrisisDialog() },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Text("I understand & will find support")
-                }
-            }
-        )
     }
 }
 
 // ==========================================
-// ONBOARDING SCREEN
+// ONBOARDING ROOT — OPENING PAGE + 7 STEPS
 // ==========================================
+
 @Composable
-fun OnboardingScreen(
-    onCompleted: (
-        name: String,
-        birthYear: Int?,
-        cycleLength: Int,
-        periodLength: Int,
-        goals: List<String>,
-        pin: String,
-        userMode: String,
-        genderMode: String,
-        bodyRelevantMode: String,
-        supportRelationship: String?,
-        consentConfirmed: Boolean,
-        sharedTrackingConsent: Boolean,
-        behaviourFocuses: List<String>,
-        medicineReminders: Boolean,
-        waterReminders: Boolean
-    ) -> Unit
-) {
-    var step by remember { mutableStateOf(0) } // Step 0: Welcome, Step 1: User Type, Step 2: Demographics, Step 3: Focus Selection, Step 4: Medical Disclaimer, Step 5: Notifications & Pin
+fun OnboardingRootScreen(viewModel: LunaViewModel) {
+    var showOpeningPage by rememberSaveable { mutableStateOf(true) }
+    var onboardingStep by rememberSaveable { mutableStateOf(1) }
 
-    // Collected Data
-    var name by remember { mutableStateOf("") }
-    var birthYearStr by remember { mutableStateOf("") }
-    var cycleLength by remember { mutableStateOf(28) }
-    var periodLength by remember { mutableStateOf(5) }
-    var lastPeriodStartDate by remember { mutableStateOf(CycleUtils.getTodayString()) }
-    var selectedGoals by remember { mutableStateOf(setOf<String>()) }
-    var pinEnabled by remember { mutableStateOf(false) }
-    var pinCode by remember { mutableStateOf("") }
-    var disclaimerAccepted by remember { mutableStateOf(false) }
+    // Collected data
+    var userMode by rememberSaveable { mutableStateOf(UserMode.SELF_TRACKING.name) }
+    var genderMode by rememberSaveable { mutableStateOf(GenderMode.PREFER_NOT_TO_SAY.name) }
+    var pronoun by rememberSaveable { mutableStateOf(Pronoun.PREFER_NOT_TO_SAY.name) }
+    var customPronoun by rememberSaveable { mutableStateOf("") }
+    var bodyRelevantMode by rememberSaveable { mutableStateOf(BodyRelevantMode.PREFER_NOT_TO_SAY.name) }
+    var supportRelationship by rememberSaveable { mutableStateOf<String?>(null) }
+    var consentConfirmed by rememberSaveable { mutableStateOf(false) }
+    var country by rememberSaveable { mutableStateOf("") }
+    var region by rememberSaveable { mutableStateOf("") }
+    var city by rememberSaveable { mutableStateOf("") }
+    var religion by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedConditions by rememberSaveable { mutableStateOf(setOf<String>()) }
+    var behaviourFocuses by rememberSaveable { mutableStateOf(setOf<String>()) }
+    var name by rememberSaveable { mutableStateOf("") }
+    var birthYearStr by rememberSaveable { mutableStateOf("") }
+    var cycleLength by rememberSaveable { mutableStateOf(28) }
+    var periodLength by rememberSaveable { mutableStateOf(5) }
+    var pinEnabled by rememberSaveable { mutableStateOf(false) }
+    var pinCode by rememberSaveable { mutableStateOf("") }
+    var disclaimerAccepted by rememberSaveable { mutableStateOf(false) }
 
-    // Demographics and Role selection
-    var userTypeChoice by remember { mutableStateOf("SELF_TRACKING") } // "SELF_TRACKING" | "SUPPORT_MODE" | "EDUCATION_ONLY"
-    var genderModeChoice by remember { mutableStateOf("FEMALE") } // "FEMALE" | "MALE" | "OTHER" | "PREFER_NOT_TO_SAY"
-    var bodyRelevantChoice by remember { mutableStateOf("MENSTRUATES") } // "MENSTRUATES" | "DOES_NOT_MENSTRUATE" | "NOT_SURE" | "PREFER_NOT_TO_SAY"
-    var supportRelationship by remember { mutableStateOf("WIFE") } // "WIFE", "MOTHER", "DAUGHTER", etc.
-    var consentConfirmed by remember { mutableStateOf(false) }
-    var sharedTrackingConsent by remember { mutableStateOf(false) }
-    var selectedFocuses by remember { mutableStateOf(setOf<String>()) }
-
-    // Notification checks
-    var periodNotification by remember { mutableStateOf(true) }
-    var moodNotification by remember { mutableStateOf(true) }
-    var cupNotification by remember { mutableStateOf(false) }
-    var medicineNotification by remember { mutableStateOf(false) }
-    var waterNotification by remember { mutableStateOf(true) }
-    var comfortCareNotification by remember { mutableStateOf(true) }
-
-    // Local Validation State
-    var localError by remember { mutableStateOf("") }
-
-    val relationshipsList = listOf(
-        Pair("WIFE", "Wife"),
-        Pair("MOTHER", "Mother"),
-        Pair("DAUGHTER", "Daughter"),
-        Pair("GIRLFRIEND", "Girlfriend"),
-        Pair("FEMALE_PARTNER", "Female Partner"),
-        Pair("SISTER", "Sister"),
-        Pair("FRIEND", "Friend"),
-        Pair("OTHER", "Other")
-    )
-
-    val focusesList = listOf(
-        "MOOD", "STRESS", "ANXIETY", "SLEEP", "PERIOD_PAIN", "PMS",
-        "PCOS_PCOD_AWARENESS", "MENSTRUAL_CUP", "FOOD_CRAVINGS",
-        "HYDRATION", "PRODUCT_CARE", "MEDICINE_REMINDER", "DOCTOR_VISIT",
-        "RELATIONSHIP_SUPPORT", "EMERGENCY_SIGNS"
-    )
-
-    fun getFocusLabel(key: String): String {
-        return when(key) {
-            "MOOD" -> "Mood & Emotional Health"
-            "STRESS" -> "Stress Reduction"
-            "ANXIETY" -> "Anxiety Relief"
-            "SLEEP" -> "Sleep Quality & Rest"
-            "PERIOD_PAIN" -> "Period Pain & Cramps"
-            "PMS" -> "PMS Support"
-            "PCOS_PCOD_AWARENESS" -> "PCOS / PCOD Awareness"
-            "MENSTRUAL_CUP" -> "Menstrual Cup Usage"
-            "FOOD_CRAVINGS" -> "Food & Comfort Cravings"
-            "HYDRATION" -> "Hydration tracking"
-            "PRODUCT_CARE" -> "Period Product Care (cup, etc.)"
-            "MEDICINE_REMINDER" -> "Medicine & Care Reminder"
-            "DOCTOR_VISIT" -> "Doctor Visit Planner"
-            "RELATIONSHIP_SUPPORT" -> "Supporter & Relationship Tips"
-            "EMERGENCY_SIGNS" -> "Emergency & Warning signs warning"
-            else -> key
+    AnimatedContent(
+        targetState = showOpeningPage,
+        transitionSpec = {
+            slideInHorizontally(tween(400)) { it } togetherWith slideOutHorizontally(tween(400)) { -it }
+        },
+        label = "opening_to_onboarding"
+    ) { isOpening ->
+        if (isOpening) {
+            OpeningPage(
+                onGetStarted = { showOpeningPage = false },
+                onGuest = { viewModel.setGuestMode(true) }
+            )
+        } else {
+            OnboardingStepScreen(
+                step = onboardingStep,
+                totalSteps = 7,
+                userMode = userMode, onUserModeChange = { userMode = it },
+                genderMode = genderMode, onGenderModeChange = { genderMode = it },
+                pronoun = pronoun, onPronounChange = { pronoun = it },
+                customPronoun = customPronoun, onCustomPronounChange = { customPronoun = it },
+                bodyRelevantMode = bodyRelevantMode, onBodyRelevantModeChange = { bodyRelevantMode = it },
+                supportRelationship = supportRelationship, onSupportRelationshipChange = { supportRelationship = it },
+                consentConfirmed = consentConfirmed, onConsentChange = { consentConfirmed = it },
+                country = country, onCountryChange = { country = it },
+                region = region, onRegionChange = { region = it },
+                city = city, onCityChange = { city = it },
+                religion = religion, onReligionChange = { religion = it },
+                selectedConditions = selectedConditions, onConditionsChange = { selectedConditions = it },
+                behaviourFocuses = behaviourFocuses, onFocusesChange = { behaviourFocuses = it },
+                name = name, onNameChange = { name = it },
+                birthYearStr = birthYearStr, onBirthYearChange = { birthYearStr = it },
+                cycleLength = cycleLength, onCycleLengthChange = { cycleLength = it },
+                periodLength = periodLength, onPeriodLengthChange = { periodLength = it },
+                pinEnabled = pinEnabled, onPinEnabledChange = { pinEnabled = it },
+                pinCode = pinCode, onPinCodeChange = { pinCode = it },
+                disclaimerAccepted = disclaimerAccepted, onDisclaimerChange = { disclaimerAccepted = it },
+                onBack = {
+                    if (onboardingStep > 1) onboardingStep-- else showOpeningPage = true
+                },
+                onNext = {
+                    if (onboardingStep < 7) {
+                        onboardingStep++
+                    }
+                },
+                onComplete = {
+                    if (disclaimerAccepted) {
+                        val derivedMode = deriveUserMode(userMode, genderMode, bodyRelevantMode)
+                        viewModel.onboardUser(
+                            name = name.ifBlank { "Companion" },
+                            birthYear = birthYearStr.toIntOrNull(),
+                            cycleLength = cycleLength,
+                            periodLength = periodLength,
+                            goals = emptyList(),
+                            pin = if (pinEnabled) pinCode else "",
+                            userMode = derivedMode.name,
+                            genderMode = genderMode,
+                            pronoun = pronoun,
+                            customPronoun = customPronoun.ifBlank { null },
+                            bodyRelevantMode = bodyRelevantMode,
+                            supportRelationship = supportRelationship,
+                            consentConfirmed = consentConfirmed,
+                            religion = religion,
+                            country = country.ifBlank { null },
+                            region = region.ifBlank { null },
+                            city = city.ifBlank { null },
+                            selectedConditions = selectedConditions.toList(),
+                            behaviourFocuses = behaviourFocuses.toList()
+                        )
+                    }
+                }
+            )
         }
+    }
+}
+
+/** Derives the final user mode from onboarding selections */
+fun deriveUserMode(userModeStr: String, genderModeStr: String, bodyRelevantModeStr: String): UserMode {
+    return when (userModeStr) {
+        UserMode.SUPPORT_MODE.name -> UserMode.SUPPORT_MODE
+        UserMode.EDUCATION_ONLY.name -> UserMode.EDUCATION_ONLY
+        else -> {
+            when (bodyRelevantModeStr) {
+                BodyRelevantMode.MENSTRUATES.name -> UserMode.SELF_TRACKING
+                BodyRelevantMode.DOES_NOT_MENSTRUATE.name -> UserMode.EDUCATION_ONLY
+                else -> UserMode.EDUCATION_ONLY
+            }
+        }
+    }
+}
+
+// ==========================================
+// OPENING PAGE
+// ==========================================
+
+@Composable
+fun OpeningPage(onGetStarted: () -> Unit, onGuest: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        SoftCreamBackground,
+                        Color(0xFFF7EEF5)
+                    )
+                )
+            )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Spacer(modifier = Modifier.height(60.dp))
+
+            // Logo + branding
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    modifier = Modifier
+                        .size(120.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    MutedRosePrimary.copy(alpha = 0.2f),
+                                    LavenderSecondary.copy(alpha = 0.1f)
+                                )
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Favorite,
+                        contentDescription = null,
+                        tint = MutedRosePrimary,
+                        modifier = Modifier.size(64.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(
+                    text = "LunaCare",
+                    style = MaterialTheme.typography.displaySmall.copy(
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.sp
+                    ),
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Period care, mental wellness, and gentle support.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            // Feature highlights
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OpeningFeatureRow(Icons.Default.CalendarMonth, "Track your cycle with privacy")
+                OpeningFeatureRow(Icons.Default.Mood, "Daily mental wellness check-ins")
+                OpeningFeatureRow(Icons.Default.LocalPharmacy, "Care product discovery")
+                OpeningFeatureRow(Icons.Default.School, "Period & menstrual cup education")
+                OpeningFeatureRow(Icons.Default.Lock, "All data encrypted on your device")
+            }
+
+            // Buttons
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.padding(bottom = 16.dp)
+            ) {
+                Button(
+                    onClick = onGetStarted,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .testTag("get_started_button"),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text("Get Started", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, null, modifier = Modifier.size(18.dp))
+                }
+                OutlinedButton(
+                    onClick = onGuest,
+                    modifier = Modifier.fillMaxWidth().height(56.dp).testTag("guest_button"),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text("Continue as Guest", fontWeight = FontWeight.Medium, fontSize = 16.sp)
+                }
+                Text(
+                    text = "Educational support only. Not medical advice. See full disclaimer inside.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun OpeningFeatureRow(icon: ImageVector, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+        }
+        Spacer(modifier = Modifier.width(16.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground)
+    }
+}
+
+// ==========================================
+// 7-STEP ONBOARDING SCREEN
+// ==========================================
+
+@Composable
+fun OnboardingStepScreen(
+    step: Int, totalSteps: Int,
+    userMode: String, onUserModeChange: (String) -> Unit,
+    genderMode: String, onGenderModeChange: (String) -> Unit,
+    pronoun: String, onPronounChange: (String) -> Unit,
+    customPronoun: String, onCustomPronounChange: (String) -> Unit,
+    bodyRelevantMode: String, onBodyRelevantModeChange: (String) -> Unit,
+    supportRelationship: String?, onSupportRelationshipChange: (String?) -> Unit,
+    consentConfirmed: Boolean, onConsentChange: (Boolean) -> Unit,
+    country: String, onCountryChange: (String) -> Unit,
+    region: String, onRegionChange: (String) -> Unit,
+    city: String, onCityChange: (String) -> Unit,
+    religion: String?, onReligionChange: (String?) -> Unit,
+    selectedConditions: Set<String>, onConditionsChange: (Set<String>) -> Unit,
+    behaviourFocuses: Set<String>, onFocusesChange: (Set<String>) -> Unit,
+    name: String, onNameChange: (String) -> Unit,
+    birthYearStr: String, onBirthYearChange: (String) -> Unit,
+    cycleLength: Int, onCycleLengthChange: (Int) -> Unit,
+    periodLength: Int, onPeriodLengthChange: (Int) -> Unit,
+    pinEnabled: Boolean, onPinEnabledChange: (Boolean) -> Unit,
+    pinCode: String, onPinCodeChange: (String) -> Unit,
+    disclaimerAccepted: Boolean, onDisclaimerChange: (Boolean) -> Unit,
+    onBack: () -> Unit, onNext: () -> Unit, onComplete: () -> Unit
+) {
+    val canProceed = when (step) {
+        1 -> true
+        2 -> if (userMode == UserMode.SUPPORT_MODE.name) consentConfirmed else true
+        3 -> true
+        4 -> true
+        5 -> true
+        6 -> true
+        7 -> disclaimerAccepted && (if (pinEnabled) pinCode.length >= 4 else true)
+        else -> true
     }
 
     Column(
@@ -281,816 +400,580 @@ fun OnboardingScreen(
             .fillMaxSize()
             .statusBarsPadding()
             .navigationBarsPadding()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.SpaceBetween,
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(horizontal = 24.dp),
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        // App header shown on screens after Welcome
-        if (step > 0) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        // Header
+        Column {
+            Spacer(modifier = Modifier.height(24.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = MaterialTheme.colorScheme.primary)
+                }
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "LunaCare",
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        letterSpacing = 0.5.sp
-                    ),
-                    modifier = Modifier.padding(top = 8.dp)
+                    "LunaCare",
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary
+                    )
                 )
-                Text(
-                    text = "Period Care & Support Companion",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                )
-
-                // Step indicators
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp),
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    for (i in 1..5) {
-                        Box(
-                            modifier = Modifier
-                                .padding(3.dp)
-                                .height(5.dp)
-                                .width(32.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (i <= step) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                )
-                        )
-                    }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            // Progress bar
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (i in 1..totalSteps) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(5.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (i <= step) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                            )
+                    )
                 }
             }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Step $step of $totalSteps",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+            )
         }
 
-        // Main Center Content
+        // Step Content
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(vertical = 12.dp),
-            contentAlignment = Alignment.Center
+                .padding(vertical = 16.dp)
         ) {
             when (step) {
-                // STEP 0: Welcome Landing Screen
-                0 -> Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                    modifier = Modifier.verticalScroll(rememberScrollState())
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(110.dp)
-                            .drawBehind {
-                                drawCircle(
-                                    brush = Brush.radialGradient(
-                                        colors = listOf(
-                                            MutedRosePrimary.copy(alpha = 0.25f),
-                                            Color.Transparent
-                                        )
-                                    )
-                                )
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Favorite,
-                            contentDescription = "LunaCare Logo",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(68.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "LunaCare",
-                        style = MaterialTheme.typography.displaySmall.copy(
-                            fontWeight = FontWeight.Black,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    )
-                    Text(
-                        text = "Period care, mental wellness, and gentle family support.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(32.dp))
-
-                    Button(
-                        onClick = { step = 1 },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp)
-                            .testTag("get_started_button"),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                    ) {
-                        Text("Get Started", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    ElevatedButton(
-                        onClick = {
-                            // Onboard instantly with typical self tracking profile
-                            onCompleted(
-                                "Luna",
-                                1996,
-                                28,
-                                5,
-                                listOf("Track period", "PMS support"),
-                                "",
-                                "SELF_TRACKING",
-                                "FEMALE",
-                                "MENSTRUATES",
-                                null,
-                                false,
-                                false,
-                                listOf("MOOD", "STRESS", "PERIOD_PAIN"),
-                                false,
-                                true
-                            )
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp)
-                            .testTag("already_have_account_button")
-                    ) {
-                        Text("I already have an account", fontWeight = FontWeight.Bold)
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    OutlinedButton(
-                        onClick = {
-                            // Continue as Guest immediately
-                            onCompleted(
-                                "Guest",
-                                null,
-                                28,
-                                5,
-                                listOf("Track period"),
-                                "",
-                                "SELF_TRACKING",
-                                "FEMALE",
-                                "MENSTRUATES",
-                                null,
-                                false,
-                                false,
-                                listOf("MOOD", "PERIOD_PAIN"),
-                                false,
-                                true
-                            )
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp)
-                            .testTag("continue_as_guest_button")
-                    ) {
-                        Text("Continue as Guest")
-                    }
-
-                    Spacer(modifier = Modifier.height(36.dp))
-
-                    Text(
-                        text = "Educational support only. Not medical advice.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-
-                // STEP 1: Usage Mode Selection ("How do you want to use LunaCare?")
-                1 -> Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.verticalScroll(rememberScrollState())
-                ) {
-                    Text(
-                        text = "How do you want to use LunaCare?",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                    Text(
-                        text = "We will optimize features and safety parameters based on your mode.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(bottom = 24.dp)
-                    )
-
-                    // Option 1: For myself
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { userTypeChoice = "SELF_TRACKING" }
-                            .padding(vertical = 8.dp)
-                            .border(
-                                width = if (userTypeChoice == "SELF_TRACKING") 2.dp else 1.dp,
-                                color = if (userTypeChoice == "SELF_TRACKING") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                                shape = RoundedCornerShape(16.dp)
-                            ),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (userTypeChoice == "SELF_TRACKING") MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surface
-                        ),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(20.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = (userTypeChoice == "SELF_TRACKING"),
-                                onClick = { userTypeChoice = "SELF_TRACKING" }
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("For myself", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
-                                Text("Track your cycle, body metrics, wellness symptoms, and medical items.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
-
-                    // Option 2: Support Someone Else
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { userTypeChoice = "SUPPORT_MODE" }
-                            .padding(vertical = 8.dp)
-                            .border(
-                                width = if (userTypeChoice == "SUPPORT_MODE") 2.dp else 1.dp,
-                                color = if (userTypeChoice == "SUPPORT_MODE") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                                shape = RoundedCornerShape(16.dp)
-                            ),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (userTypeChoice == "SUPPORT_MODE") MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surface
-                        ),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(20.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = (userTypeChoice == "SUPPORT_MODE"),
-                                onClick = { userTypeChoice = "SUPPORT_MODE" }
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("To support someone else", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
-                                Text("Support wife, mother, daughter, girlfriend, or partner with comfortable care guidelines.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
-
-                    // Option 3: Only to learn
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { userTypeChoice = "EDUCATION_ONLY" }
-                            .padding(vertical = 8.dp)
-                            .border(
-                                width = if (userTypeChoice == "EDUCATION_ONLY") 2.dp else 1.dp,
-                                color = if (userTypeChoice == "EDUCATION_ONLY") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                                shape = RoundedCornerShape(16.dp)
-                            ),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (userTypeChoice == "EDUCATION_ONLY") MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surface
-                        ),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(20.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = (userTypeChoice == "EDUCATION_ONLY"),
-                                onClick = { userTypeChoice = "EDUCATION_ONLY" }
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("Only to learn", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
-                                Text("Read medical safety logs, menstrual cup parameters, and safety guidelines with privacy.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
-                }
-
-                // STEP 2: Profile Setup (Dynamic based on step 1 choice)
-                2 -> Column(
-                    horizontalAlignment = Alignment.Start,
-                    modifier = Modifier.verticalScroll(rememberScrollState())
-                ) {
-                    Text(
-                        text = "Profile Configuration",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-
-                    OutlinedTextField(
-                        value = name,
-                        onValueChange = { name = it; localError = "" },
-                        label = { Text("What name should we call you?") },
-                        singleLine = true,
-                        isError = localError.isNotEmpty(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    if (localError.isNotEmpty()) {
-                        Text(localError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    if (userTypeChoice == "SELF_TRACKING") {
-                        Text("Select your gender identity:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        val genderOptions = listOf(
-                            Pair("FEMALE", "Female"),
-                            Pair("MALE", "Male"),
-                            Pair("OTHER", "Other"),
-                            Pair("PREFER_NOT_TO_SAY", "Prefer not to say")
-                        )
-
-                        genderOptions.forEach { (key, label) ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { 
-                                        genderModeChoice = key
-                                        if (key == "MALE") {
-                                            bodyRelevantChoice = "DOES_NOT_MENSTRUATE"
-                                        }
-                                    }
-                                    .padding(vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                RadioButton(selected = (genderModeChoice == key), onClick = { 
-                                    genderModeChoice = key
-                                    if (key == "MALE") bodyRelevantChoice = "DOES_NOT_MENSTRUATE"
-                                })
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(label, style = MaterialTheme.typography.bodyLarge)
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Text("Do you currently want period/cycle tracking features?", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        val bodyOptions = listOf(
-                            Pair("MENSTRUATES", "Yes, I menstruate and want tracking"),
-                            Pair("DOES_NOT_MENSTRUATE", "No, I do not need tracking"),
-                            Pair("NOT_SURE", "I am not sure"),
-                            Pair("PREFER_NOT_TO_SAY", "Prefer not to say")
-                        )
-
-                        bodyOptions.forEach { (key, label) ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { bodyRelevantChoice = key }
-                                    .padding(vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                RadioButton(selected = (bodyRelevantChoice == key), onClick = { bodyRelevantChoice = key })
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(label, style = MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-
-                        if (genderModeChoice == "MALE") {
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Surface(
-                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text(
-                                    text = "💡 Comfort Mode: Men's self-tracking defaults to Educational guides & Physical care advice to respect medical privacy, keeping active private trackers hidden from view.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(12.dp)
-                                )
-                            }
-                        }
-
-                    } else if (userTypeChoice == "SUPPORT_MODE") {
-                        Text("Relationship to partner you are supporting:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        relationshipsList.forEach { (key, label) ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { supportRelationship = key }
-                                    .padding(vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                RadioButton(selected = (supportRelationship == key), onClick = { supportRelationship = key })
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(label, style = MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Surface(
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text(
-                                    text = "🔒 Respect & Safety Agreement",
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "Support means comfort, trust, and complete privacy. Do not log or monitor another family member's cycles, moods, or intimate safety details without their explicit permission.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.clickable { consentConfirmed = !consentConfirmed }
-                        ) {
-                            Checkbox(checked = consentConfirmed, onCheckedChange = { consentConfirmed = it })
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                "I understand and will respect privacy and consent.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-
-                    } else {
-                        // EDUCATION_ONLY setup
-                        Text(
-                            text = "LunaCare is configured in Education-only mode. Personal cycle calendars are fully hidden, allowing you to learn and support with maximum simplicity.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 12.dp)
-                        )
-                    }
-                }
-
-                // STEP 3: Setup Focus Setup (“What do you want LunaCare to focus on?”)
-                3 -> Column(
-                    horizontalAlignment = Alignment.Start,
-                    modifier = Modifier.verticalScroll(rememberScrollState())
-                ) {
-                    Text(
-                        text = "What should LunaCare focus on?",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    )
-                    Text(
-                        text = "Select your target focuses so we can custom model suggestions (multiple choices supported):",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
-
-                    focusesList.forEach { key ->
-                        val isSel = selectedFocuses.contains(key)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selectedFocuses = if (isSel) selectedFocuses - key else selectedFocuses + key }
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = isSel,
-                                onCheckedChange = { selectedFocuses = if (isSel) selectedFocuses - key else selectedFocuses + key }
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(getFocusLabel(key), style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                }
-
-                // STEP 4: Medical Disclaimer
-                4 -> Column(
-                    horizontalAlignment = Alignment.Start,
-                    modifier = Modifier.verticalScroll(rememberScrollState())
-                ) {
-                    Text(
-                        text = "Safety & Medical Disclaimer",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error),
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-
-                    Surface(
-                        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error)
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                text = "LunaCare is an educational and wellness tracker only. It is not clinical advice, diagnosis, or prescription. We never make dosage suggestions or prescribe items. If you experience severe bleeding, sharp pelvic distress, suspected infectious discharge, or safety crises, please contact emergency physical/mental support immediately.",
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.Medium,
-                                    lineHeight = 22.sp
-                                ),
-                                color = MaterialTheme.colorScheme.onErrorContainer
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { disclaimerAccepted = !disclaimerAccepted; localError = "" }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Checkbox(
-                            checked = disclaimerAccepted,
-                            onCheckedChange = { disclaimerAccepted = it; localError = "" }
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "I understand and accept this medical disclaimer.",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                    }
-                    if (localError.isNotEmpty()) {
-                        Text(localError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
-                    }
-                }
-
-                // STEP 5: Reminders & Pin Lock
-                5 -> Column(
-                    horizontalAlignment = Alignment.Start,
-                    modifier = Modifier.verticalScroll(rememberScrollState())
-                ) {
-                    Text(
-                        text = "Set security and alerts",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-
-                    Text("Alert Preferences:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { periodNotification = !periodNotification }) {
-                        Checkbox(checked = periodNotification, onCheckedChange = { periodNotification = it })
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Cycle phase and health updates", style = MaterialTheme.typography.bodyMedium)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { moodNotification = !moodNotification }) {
-                        Checkbox(checked = moodNotification, onCheckedChange = { moodNotification = it })
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Daily mood check-in alerts", style = MaterialTheme.typography.bodyMedium)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { medicineNotification = !medicineNotification }) {
-                        Checkbox(checked = medicineNotification, onCheckedChange = { medicineNotification = it })
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Medicine & Care reminder alarms", style = MaterialTheme.typography.bodyMedium)
-                    }
-
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    Text("App Lock Security PIN (Optional):", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { pinEnabled = !pinEnabled; localError = "" }) {
-                        Checkbox(checked = pinEnabled, onCheckedChange = { pinEnabled = it; localError = "" })
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Enable secure 4-6 digit entrance pin code", style = MaterialTheme.typography.bodyMedium)
-                    }
-
-                    if (pinEnabled) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        OutlinedTextField(
-                            value = pinCode,
-                            onValueChange = { if (it.length <= 6 && it.all { ch -> ch.isDigit() }) pinCode = it; localError = "" },
-                            label = { Text("Enter Numeric Passcode (4-6 digits)") },
-                            singleLine = true,
-                            isError = localError.isNotEmpty(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            visualTransformation = PasswordVisualTransformation(),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        if (localError.isNotEmpty()) {
-                            Text(localError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
-                        }
-                    }
-                }
+                1 -> OnboardingStep1UserMode(userMode, onUserModeChange)
+                2 -> OnboardingStep2Identity(
+                    userMode = userMode,
+                    genderMode = genderMode, onGenderModeChange = onGenderModeChange,
+                    pronoun = pronoun, onPronounChange = onPronounChange,
+                    customPronoun = customPronoun, onCustomPronounChange = onCustomPronounChange,
+                    bodyRelevantMode = bodyRelevantMode, onBodyRelevantModeChange = onBodyRelevantModeChange,
+                    supportRelationship = supportRelationship, onSupportRelationshipChange = onSupportRelationshipChange,
+                    consentConfirmed = consentConfirmed, onConsentChange = onConsentChange
+                )
+                3 -> OnboardingStep3Region(country, onCountryChange, region, onRegionChange, city, onCityChange)
+                4 -> OnboardingStep4Religion(religion, onReligionChange)
+                5 -> OnboardingStep5HealthProfile(selectedConditions, onConditionsChange)
+                6 -> OnboardingStep6BehaviourFocus(behaviourFocuses, onFocusesChange)
+                7 -> OnboardingStep7PinAndDisclaimer(
+                    name = name, onNameChange = onNameChange,
+                    birthYearStr = birthYearStr, onBirthYearChange = onBirthYearChange,
+                    cycleLength = cycleLength, onCycleLengthChange = onCycleLengthChange,
+                    periodLength = periodLength, onPeriodLengthChange = onPeriodLengthChange,
+                    pinEnabled = pinEnabled, onPinEnabledChange = onPinEnabledChange,
+                    pinCode = pinCode, onPinCodeChange = onPinCodeChange,
+                    disclaimerAccepted = disclaimerAccepted, onDisclaimerChange = onDisclaimerChange
+                )
             }
         }
 
-        // Action Buttons at bottom (For steps > 0)
-        if (step > 0) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+        // Navigation buttons
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 24.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(onClick = onBack) {
+                Text("Back", color = MaterialTheme.colorScheme.primary)
+            }
+            Button(
+                onClick = { if (step < 7) onNext() else onComplete() },
+                enabled = canProceed,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.height(52.dp).padding(start = 16.dp)
             ) {
-                // Back button
-                TextButton(
-                    onClick = {
-                        localError = ""
-                        step--
+                Text(
+                    if (step == 7) "Start LunaCare" else "Continue",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, null, modifier = Modifier.size(18.dp))
+            }
+        }
+    }
+}
+
+// -- Onboarding Step 1: How do you want to use LunaCare? --
+@Composable
+fun OnboardingStep1UserMode(userMode: String, onUserModeChange: (String) -> Unit) {
+    val options = listOf(
+        Triple(UserMode.SELF_TRACKING.name, "For myself", "Track cycle, mood, and wellness."),
+        Triple(UserMode.SUPPORT_MODE.name, "To support someone else", "Help a partner, family member, or friend."),
+        Triple(UserMode.EDUCATION_ONLY.name, "Only to learn", "Read educational content without tracking.")
+    )
+    Column(
+        modifier = Modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            "How do you want to use LunaCare?",
+            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
+        )
+        Text(
+            "You can change this anytime in settings.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        options.forEach { (mode, title, desc) ->
+            val selected = userMode == mode
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onUserModeChange(mode) }
+                    .testTag("mode_$mode"),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.surface
+                ),
+                border = if (selected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
+            ) {
+                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(
+                        selected = selected,
+                        onClick = { onUserModeChange(mode) },
+                        colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(title, fontWeight = FontWeight.Bold)
+                        Text(desc, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                     }
-                ) {
-                    Text("Back")
-                }
-
-                // Continue/Finish button
-                Button(
-                    onClick = {
-                        localError = ""
-                        // 1. Validate demographics (Step 2)
-                        if (step == 2) {
-                            if (name.isBlank()) {
-                                localError = "Name cannot be empty. Please enter your name."
-                                return@Button
-                            }
-                            if (userTypeChoice == "SUPPORT_MODE" && !consentConfirmed) {
-                                localError = "You must confirm privacy and consent to continue."
-                                return@Button
-                            }
-                        }
-
-                        // 2. Validate Disclaimer accept (Step 4)
-                        if (step == 4 && !disclaimerAccepted) {
-                            localError = "You must accept the medical disclaimer to continue."
-                            return@Button
-                        }
-
-                        // 3. Validate Pin Lock (Step 5)
-                        if (step == 5 && pinEnabled && pinCode.length < 4) {
-                            localError = "PIN passcode must be between 4 to 6 numeric digits."
-                            return@Button
-                        }
-
-                        // Flow step movement
-                        if (step < 5) {
-                            step++
-                        } else {
-                            // Onboard complete!
-                            val finalUserMode = when {
-                                userTypeChoice == "SUPPORT_MODE" -> "SUPPORT_MODE"
-                                userTypeChoice == "EDUCATION_ONLY" -> "EDUCATION_ONLY"
-                                genderModeChoice == "MALE" -> "EDUCATION_ONLY"
-                                else -> "SELF_TRACKING"
-                            }
-                            onCompleted(
-                                name,
-                                null, // birthYear
-                                cycleLength,
-                                periodLength,
-                                listOf("Track period", "PMS support"),
-                                if (pinEnabled) pinCode else "",
-                                finalUserMode,
-                                genderModeChoice,
-                                bodyRelevantChoice,
-                                if (userTypeChoice == "SUPPORT_MODE") supportRelationship else null,
-                                consentConfirmed,
-                                sharedTrackingConsent,
-                                selectedFocuses.toList(),
-                                medicineNotification,
-                                waterNotification
-                            )
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Text(if (step == 5) "Discover LunaCare" else "Continue")
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Icon(imageVector = Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
                 }
             }
         }
     }
 }
 
-// ==========================================
-// PIN AUTHENTICATION SCREEN
-// ==========================================
+// -- Onboarding Step 2: Identity & Consent --
 @Composable
-fun PinAuthScreen(
-    storedPin: String,
-    onAuthenticated: (String) -> Boolean
+fun OnboardingStep2Identity(
+    userMode: String,
+    genderMode: String, onGenderModeChange: (String) -> Unit,
+    pronoun: String, onPronounChange: (String) -> Unit,
+    customPronoun: String, onCustomPronounChange: (String) -> Unit,
+    bodyRelevantMode: String, onBodyRelevantModeChange: (String) -> Unit,
+    supportRelationship: String?, onSupportRelationshipChange: (String?) -> Unit,
+    consentConfirmed: Boolean, onConsentChange: (Boolean) -> Unit
 ) {
+    Column(
+        modifier = Modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        if (userMode == UserMode.SUPPORT_MODE.name) {
+            // Support mode — relationship + consent
+            Text("Support someone with care", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
+
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f))) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Your relationship to them:", fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    val relationships = listOf("WIFE", "MOTHER", "DAUGHTER", "GIRLFRIEND", "FEMALE_PARTNER", "SISTER", "FRIEND", "OTHER")
+                    val labels = listOf("Wife", "Mother", "Daughter", "Girlfriend", "Female Partner", "Sister", "Friend", "Other")
+                    relationships.forEachIndexed { i, rel ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable { onSupportRelationshipChange(rel) }.padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = supportRelationship == rel, onClick = { onSupportRelationshipChange(rel) })
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(labels[i])
+                        }
+                    }
+                }
+            }
+
+            // Consent warning
+            Surface(
+                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.Top) {
+                        Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "Support means care, respect, and privacy. Do not track another person's period, mood, symptoms, location, or medical information without clear permission.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { onConsentChange(!consentConfirmed) }.padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = consentConfirmed, onCheckedChange = onConsentChange,
+                    modifier = Modifier.testTag("consent_checkbox")
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "I understand and will respect privacy and consent.",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                )
+            }
+        } else {
+            // Self / Education mode — gender + pronouns + body mode
+            Text("Tell us a little about you", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
+            Text("All optional. Used only to personalise your experience.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+
+            OnboardingOptionGroup(
+                label = "Gender (optional)",
+                options = mapOf(
+                    "FEMALE" to "Female", "MALE" to "Male",
+                    "OTHER" to "Other", "PREFER_NOT_TO_SAY" to "Prefer not to say"
+                ),
+                selected = genderMode, onSelect = onGenderModeChange
+            )
+            OnboardingOptionGroup(
+                label = "Pronouns (optional)",
+                options = mapOf(
+                    "SHE_HER" to "She/Her", "HE_HIM" to "He/Him",
+                    "THEY_THEM" to "They/Them", "PREFER_NOT_TO_SAY" to "Prefer not to say"
+                ),
+                selected = pronoun, onSelect = onPronounChange
+            )
+            if (pronoun == "CUSTOM") {
+                OutlinedTextField(
+                    value = customPronoun, onValueChange = onCustomPronounChange,
+                    label = { Text("Your pronouns") }, modifier = Modifier.fillMaxWidth()
+                )
+            }
+            if (userMode == UserMode.SELF_TRACKING.name || userMode == UserMode.EDUCATION_ONLY.name) {
+                OnboardingOptionGroup(
+                    label = "Do you want cycle tracking features?",
+                    options = mapOf(
+                        "MENSTRUATES" to "Yes, I menstruate and want tracking",
+                        "DOES_NOT_MENSTRUATE" to "No, I don't need tracking",
+                        "NOT_SURE" to "I'm not sure",
+                        "PREFER_NOT_TO_SAY" to "Prefer not to say"
+                    ),
+                    selected = bodyRelevantMode, onSelect = onBodyRelevantModeChange
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun OnboardingOptionGroup(label: String, options: Map<String, String>, selected: String, onSelect: (String) -> Unit) {
+    Column {
+        Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+        Spacer(modifier = Modifier.height(8.dp))
+        options.forEach { (key, display) ->
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { onSelect(key) }.padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = selected == key,
+                    onClick = { onSelect(key) },
+                    colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(display, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+
+// -- Onboarding Step 3: Region --
+@Composable
+fun OnboardingStep3Region(country: String, onCountryChange: (String) -> Unit, region: String, onRegionChange: (String) -> Unit, city: String, onCityChange: (String) -> Unit) {
+    Column(
+        modifier = Modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text("Where are you located?", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
+        Text("Optional. Used only for localised wellness content and nearby search. Never shared or used for profiling.",
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+        OutlinedTextField(value = country, onValueChange = onCountryChange, label = { Text("Country (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+        OutlinedTextField(value = region, onValueChange = onRegionChange, label = { Text("State / Province / Division (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+        OutlinedTextField(value = city, onValueChange = onCityChange, label = { Text("City (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))) {
+            Text(
+                "Region is used only for: educational wording, nearby search, and cultural content. It is never used for ads, discrimination, or profiling.",
+                modifier = Modifier.padding(12.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+// -- Onboarding Step 4: Religion --
+@Composable
+fun OnboardingStep4Religion(religion: String?, onReligionChange: (String?) -> Unit) {
+    val options = listOf("ISLAM" to "Islam", "HINDU" to "Hindu", "CHRISTIAN" to "Christian", "BUDDHIST" to "Buddhist", "OTHER" to "Other", "PREFER_NOT_TO_SAY" to "Prefer not to say")
+    Column(
+        modifier = Modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text("Faith & culture preference", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
+        Text("Optional. Used only to personalise respectful wellness content.",
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))) {
+            Text(
+                "This is entirely optional. Your answer only affects content — it is never shared, used for profiling, or required.",
+                modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        options.forEach { (key, display) ->
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable {
+                    onReligionChange(if (religion == key) null else key)
+                }.padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = religion == key,
+                    onClick = { onReligionChange(if (religion == key) null else key) }
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(display, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+
+// -- Onboarding Step 5: Health Profile --
+@Composable
+fun OnboardingStep5HealthProfile(selectedConditions: Set<String>, onConditionsChange: (Set<String>) -> Unit) {
+    val conditions = listOf(
+        "PCOS", "PCOD", "PMOS", "PMS", "Endometriosis awareness",
+        "Irregular period", "Heavy bleeding", "Severe cramps", "Anxiety/stress",
+        "Low mood", "Menstrual cup discomfort", "Pregnancy concern", "Other", "Prefer not to say"
+    )
+    Column(
+        modifier = Modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text("Health awareness", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f))) {
+            Text(
+                "Select what you want LunaCare to help you learn or track. These are self-reported awareness labels — the app is not diagnosing you.",
+                modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.secondary
+            )
+        }
+        conditions.forEach { condition ->
+            val selected = selectedConditions.contains(condition)
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable {
+                    onConditionsChange(
+                        if (selected) selectedConditions - condition else selectedConditions + condition
+                    )
+                }.padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(checked = selected, onCheckedChange = {
+                    onConditionsChange(if (selected) selectedConditions - condition else selectedConditions + condition)
+                })
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(condition, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+
+// -- Onboarding Step 6: Behaviour Focus --
+@Composable
+fun OnboardingStep6BehaviourFocus(behaviourFocuses: Set<String>, onFocusesChange: (Set<String>) -> Unit) {
+    val focuses = listOf(
+        "Mood", "Stress", "Anxiety", "Sleep", "Period pain", "PMS",
+        "PCOS/PCOD awareness", "PMOS awareness", "Menstrual cup", "Food cravings",
+        "Hydration", "Product care", "Medicine reminder", "Doctor visit",
+        "Relationship support", "Emergency signs"
+    )
+    Column(
+        modifier = Modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text("What should LunaCare focus on?", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
+        Text("Choose as many as you like. You can always change this later.",
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+        focuses.forEach { focus ->
+            val selected = behaviourFocuses.contains(focus)
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable {
+                    onFocusesChange(if (selected) behaviourFocuses - focus else behaviourFocuses + focus)
+                }.padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(checked = selected, onCheckedChange = {
+                    onFocusesChange(if (selected) behaviourFocuses - focus else behaviourFocuses + focus)
+                })
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(focus, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+
+// -- Onboarding Step 7: Name + Cycle + PIN + Disclaimer --
+@Composable
+fun OnboardingStep7PinAndDisclaimer(
+    name: String, onNameChange: (String) -> Unit,
+    birthYearStr: String, onBirthYearChange: (String) -> Unit,
+    cycleLength: Int, onCycleLengthChange: (Int) -> Unit,
+    periodLength: Int, onPeriodLengthChange: (Int) -> Unit,
+    pinEnabled: Boolean, onPinEnabledChange: (Boolean) -> Unit,
+    pinCode: String, onPinCodeChange: (String) -> Unit,
+    disclaimerAccepted: Boolean, onDisclaimerChange: (Boolean) -> Unit
+) {
+    Column(
+        modifier = Modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text("Almost there!", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
+
+        OutlinedTextField(value = name, onValueChange = onNameChange,
+            label = { Text("How shall we address you? (optional)") },
+            placeholder = { Text("e.g. Luna") },
+            modifier = Modifier.fillMaxWidth(), singleLine = true)
+
+        OutlinedTextField(value = birthYearStr, onValueChange = { if (it.length <= 4) onBirthYearChange(it) },
+            label = { Text("Birth year (optional)") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth(), singleLine = true)
+
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Average cycle length: $cycleLength days", fontWeight = FontWeight.Bold)
+                Slider(value = cycleLength.toFloat(), onValueChange = { onCycleLengthChange(it.toInt()) }, valueRange = 21f..45f, steps = 24)
+                Text("Average period length: $periodLength days", fontWeight = FontWeight.Bold)
+                Slider(value = periodLength.toFloat(), onValueChange = { onPeriodLengthChange(it.toInt()) }, valueRange = 3f..10f, steps = 7)
+            }
+        }
+
+        Card {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("App Lock (optional)", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(checked = pinEnabled, onCheckedChange = onPinEnabledChange)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Enable PIN lock")
+                }
+                if (pinEnabled) {
+                    OutlinedTextField(
+                        value = pinCode,
+                        onValueChange = { if (it.length <= 6 && it.all { ch -> ch.isDigit() }) onPinCodeChange(it) },
+                        label = { Text("4–6 digit PIN") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
+
+        // Disclaimer
+        Surface(
+            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f),
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.4f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Important Safety Disclaimer",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error))
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(LunaContent.GLOBAL_DISCLAIMER,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer)
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable { onDisclaimerChange(!disclaimerAccepted) }.padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(checked = disclaimerAccepted, onCheckedChange = onDisclaimerChange,
+                modifier = Modifier.testTag("disclaimer_checkbox"))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("I understand and accept the educational safety guidelines.",
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+        }
+    }
+}
+
+// ==========================================
+// PIN AUTH SCREEN
+// ==========================================
+
+@Composable
+fun PinAuthScreen(storedPin: String, onAuthenticated: (String) -> Boolean) {
     var pinInput by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-            .padding(24.dp),
+        modifier = Modifier.fillMaxSize().statusBarsPadding().padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(top = 40.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Lock,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(64.dp)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "LunaCare Security",
-                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
-            )
-            Text(
-                text = "Please enter your passcode to unlock your journal and data",
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = 48.dp)) {
+            Box(
+                modifier = Modifier.size(80.dp).clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(40.dp))
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+            Text("LunaCare", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+            Text("Enter your passcode to unlock",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp)
-            )
+                textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp, start = 32.dp, end = 32.dp))
             Spacer(modifier = Modifier.height(40.dp))
-
-            // Dot pin bubbles
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center
-            ) {
-                for (i in 0 until storedPin.length) {
-                    val isActive = i < pinInput.length
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                repeat(storedPin.length) { i ->
                     Box(
-                        modifier = Modifier
-                            .padding(8.dp)
-                            .size(16.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (isActive) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                            )
+                        modifier = Modifier.size(16.dp).clip(CircleShape)
+                            .background(if (i < pinInput.length) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
                     )
                 }
             }
-
             if (errorMessage.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = errorMessage,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
-                )
+                Text(errorMessage, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
             }
         }
-
-        // Custom Numeric Keypad
-        Column(
-            modifier = Modifier.padding(bottom = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            val keys = listOf(
-                listOf("1", "2", "3"),
-                listOf("4", "5", "6"),
-                listOf("7", "8", "9"),
-                listOf("", "0", "Delete")
-            )
-
+        Column(modifier = Modifier.padding(bottom = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            val keys = listOf(listOf("1","2","3"), listOf("4","5","6"), listOf("7","8","9"), listOf("","0","Delete"))
             keys.forEach { row ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     row.forEach { digit ->
                         Box(
-                            modifier = Modifier
-                                .size(72.dp)
-                                .clip(CircleShape)
+                            modifier = Modifier.size(72.dp).clip(CircleShape)
                                 .clickable(enabled = digit.isNotEmpty()) {
                                     if (digit == "Delete") {
-                                        if (pinInput.isNotEmpty()) {
-                                            pinInput = pinInput.dropLast(1)
-                                        }
-                                    } else if (digit.isNotEmpty()) {
-                                        if (pinInput.length < storedPin.length) {
-                                            pinInput += digit
-                                            if (pinInput.length == storedPin.length) {
-                                                if (onAuthenticated(pinInput)) {
-                                                    // Pass success handled upstream
-                                                } else {
-                                                    errorMessage = "Incorrect Passcode. Try again."
-                                                    pinInput = ""
-                                                }
+                                        if (pinInput.isNotEmpty()) pinInput = pinInput.dropLast(1)
+                                    } else if (pinInput.length < storedPin.length) {
+                                        pinInput += digit
+                                        if (pinInput.length == storedPin.length) {
+                                            if (!onAuthenticated(pinInput)) {
+                                                errorMessage = "Incorrect passcode. Please try again."
+                                                pinInput = ""
                                             }
                                         }
                                     }
@@ -1098,14 +981,9 @@ fun PinAuthScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             if (digit == "Delete") {
-                                Icon(Icons.Default.Backspace, contentDescription = "Delete", tint = MaterialTheme.colorScheme.onBackground)
-                            } else {
-                                Text(
-                                    text = digit,
-                                    fontSize = 24.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onBackground
-                                )
+                                Icon(Icons.Default.Backspace, null, tint = MaterialTheme.colorScheme.onBackground)
+                            } else if (digit.isNotEmpty()) {
+                                Text(digit, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -1118,1893 +996,541 @@ fun PinAuthScreen(
 // ==========================================
 // MAIN APP LAYOUT
 // ==========================================
-fun getTabsForUserMode(profile: Profile?): List<AppTab> {
-    if (profile == null) return listOf(AppTab.Home, AppTab.Learn, AppTab.Care, AppTab.Settings)
-    val access = CycleUtils.getFeatureAccess(profile)
-    return when (profile.userMode) {
-        "SELF_TRACKING" -> {
-            if (access.canTrackCycle) {
-                listOf(AppTab.Home, AppTab.Cycle, AppTab.Mood, AppTab.Journal, AppTab.Learn, AppTab.Care)
-            } else {
-                listOf(AppTab.Home, AppTab.Mood, AppTab.Journal, AppTab.Learn, AppTab.Care)
-            }
-        }
-        "SUPPORT_MODE" -> listOf(AppTab.Home, AppTab.Support, AppTab.Learn, AppTab.Care, AppTab.Journal, AppTab.Settings)
-        "EDUCATION_ONLY" -> listOf(AppTab.Home, AppTab.Learn, AppTab.Care, AppTab.Mood, AppTab.Settings)
-        else -> listOf(AppTab.Home, AppTab.Learn, AppTab.Care, AppTab.Settings)
-    }
-}
-
-fun getTabTitle(tab: AppTab, userMode: String): String {
-    if (tab == AppTab.Journal && userMode == "SUPPORT_MODE") return "Notes"
-    if (tab == AppTab.Mood && userMode == "EDUCATION_ONLY") return "Mind"
-    return tab.title
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainAppLayout(
-    profile: Profile,
-    viewModel: LunaViewModel
-) {
-    val activeTabs = remember(profile.userMode, profile.bodyRelevantMode) { getTabsForUserMode(profile) }
-    var selectedTab by rememberSaveable(profile.userMode) { mutableStateOf(activeTabs.firstOrNull() ?: AppTab.Home) }
+fun MainAppLayout(profile: Profile, viewModel: LunaViewModel) {
+    val userMode = try { UserMode.valueOf(profile.userMode) } catch (e: Exception) { UserMode.EDUCATION_ONLY }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val unreadCount by viewModel.unreadNotificationCount.collectAsState()
 
-    // Automatic Navigation Event Tracking
-    androidx.compose.runtime.LaunchedEffect(selectedTab) {
-        viewModel.trackNavigation(getTabTitle(selectedTab, profile.userMode))
-    }
+    var activeSelfTab by rememberSaveable { mutableStateOf(SelfTrackingTab.Home) }
+    var activeSupportTab by rememberSaveable { mutableStateOf(SupportTab.Home) }
+    var activeEduTab by rememberSaveable { mutableStateOf(EducationTab.Home) }
 
-    val deepLinkRoute by viewModel.deepLinkRoute.collectAsState()
-    androidx.compose.runtime.LaunchedEffect(deepLinkRoute) {
-        deepLinkRoute?.let { path ->
-            when {
-                path.contains("/learn") || path.contains("/cup-education") || path.contains("/awareness") -> {
-                    if (activeTabs.contains(AppTab.Learn)) selectedTab = AppTab.Learn
-                }
-                path.contains("/care") -> {
-                    if (activeTabs.contains(AppTab.Care)) selectedTab = AppTab.Care
-                }
-            }
-            viewModel.clearDeepLinkRoute()
+    // Deep screens within tabs
+    var activeDeepScreen by rememberSaveable { mutableStateOf<String?>(null) }
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            SidePanel(
+                profile = profile,
+                viewModel = viewModel,
+                onNavigateTo = { screen -> activeDeepScreen = screen },
+                onClose = { /* handled by drawerState */ }
+            )
         }
-    }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = profile.displayName.firstOrNull()?.uppercase() ?: "L",
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier.size(36.dp).clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    profile.displayName.firstOrNull()?.uppercase() ?: "L",
+                                    fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("LunaCare", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black))
+                                if (profile.city != null || profile.country != null) {
+                                    Text(
+                                        listOfNotNull(profile.city, profile.country).joinToString(", "),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { /* drawerState.open() called by LaunchedEffect pattern */ }) {
+                            Icon(Icons.Default.Menu, "Menu", tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                    },
+                    actions = {
+                        BadgedBox(badge = { if (unreadCount > 0) Badge { Text("$unreadCount") } }) {
+                            IconButton(onClick = { activeDeepScreen = "notifications" }) {
+                                Icon(Icons.Default.Notifications, "Notifications")
+                            }
+                        }
+                        IconButton(onClick = { activeDeepScreen = "settings" }, modifier = Modifier.testTag("settings_button")) {
+                            Icon(Icons.Default.Settings, "Settings")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+                )
+            },
+            bottomBar = {
+                when (userMode) {
+                    UserMode.SELF_TRACKING -> NavigationBar(containerColor = MaterialTheme.colorScheme.background) {
+                        SelfTrackingTab.values().forEach { tab ->
+                            NavigationBarItem(
+                                selected = activeSelfTab == tab && activeDeepScreen == null,
+                                onClick = { activeSelfTab = tab; activeDeepScreen = null },
+                                icon = { Icon(tab.icon, tab.title) },
+                                label = { Text(tab.title, fontSize = 10.sp) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                                    unselectedIconColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+                                    unselectedTextColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                                )
                             )
                         }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = "LunaCare",
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
-                        )
                     }
-                },
-                actions = {
-                    IconButton(
-                        onClick = { selectedTab = AppTab.Settings },
-                        modifier = Modifier.testTag("settings_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = "Settings",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
-            )
-        },
-        bottomBar = {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.background,
-                windowInsets = WindowInsets.navigationBars
-            ) {
-                activeTabs.forEach { tab ->
-                    NavigationBarItem(
-                        selected = selectedTab == tab,
-                        onClick = { selectedTab = tab },
-                        icon = {
-                            Icon(
-                                imageVector = tab.icon,
-                                contentDescription = getTabTitle(tab, profile.userMode)
+                    UserMode.SUPPORT_MODE -> NavigationBar(containerColor = MaterialTheme.colorScheme.background) {
+                        SupportTab.values().forEach { tab ->
+                            NavigationBarItem(
+                                selected = activeSupportTab == tab && activeDeepScreen == null,
+                                onClick = { activeSupportTab = tab; activeDeepScreen = null },
+                                icon = { Icon(tab.icon, tab.title) },
+                                label = { Text(tab.title, fontSize = 10.sp) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                                )
                             )
-                        },
-                        label = { Text(text = getTabTitle(tab, profile.userMode), fontSize = 10.sp) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.primary,
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                            unselectedIconColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
-                            unselectedTextColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
-                            indicatorColor = MaterialTheme.colorScheme.primaryContainer
-                        )
-                    )
+                        }
+                    }
+                    UserMode.EDUCATION_ONLY -> NavigationBar(containerColor = MaterialTheme.colorScheme.background) {
+                        EducationTab.values().forEach { tab ->
+                            NavigationBarItem(
+                                selected = activeEduTab == tab && activeDeepScreen == null,
+                                onClick = { activeEduTab = tab; activeDeepScreen = null },
+                                icon = { Icon(tab.icon, tab.title) },
+                                label = { Text(tab.title, fontSize = 10.sp) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        ) { innerPadding ->
+            Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+                // Deep screen routing
+                when (activeDeepScreen) {
+                    "notifications" -> NotificationPanelScreen(viewModel = viewModel, onBack = { activeDeepScreen = null })
+                    "settings" -> SettingsTab(profile = profile, viewModel = viewModel, onBack = { activeDeepScreen = null })
+                    "medical_journal" -> MedicalJournalScreen(viewModel = viewModel, onBack = { activeDeepScreen = null })
+                    "medicine_reminders" -> MedicineRemindersScreen(viewModel = viewModel, onBack = { activeDeepScreen = null })
+                    "cup_tracker" -> CupCareTrackerScreen(viewModel = viewModel, onBack = { activeDeepScreen = null })
+                    "health_awareness" -> HealthAwarenessScreen(viewModel = viewModel, onBack = { activeDeepScreen = null })
+                    "ai_assistant" -> AiAssistantScreen(profile = profile, viewModel = viewModel, onBack = { activeDeepScreen = null })
+                    "permission_center" -> PermissionCenterScreen(profile = profile, viewModel = viewModel, onBack = { activeDeepScreen = null })
+                    "profile_edit" -> ProfileEditScreen(profile = profile, viewModel = viewModel, onBack = { activeDeepScreen = null })
+                    "bookmarks" -> BookmarksScreen(viewModel = viewModel, onBack = { activeDeepScreen = null })
+                    else -> {
+                        // Tab routing
+                        when (userMode) {
+                            UserMode.SELF_TRACKING -> when (activeSelfTab) {
+                                SelfTrackingTab.Home -> DashboardTab(profile = profile, viewModel = viewModel, onDeepNavigate = { activeDeepScreen = it })
+                                SelfTrackingTab.Cycle -> CycleTab(profile = profile, viewModel = viewModel)
+                                SelfTrackingTab.Mood -> BehaviourCheckInTab(profile = profile, viewModel = viewModel)
+                                SelfTrackingTab.Journal -> JournalTab(profile = profile, viewModel = viewModel)
+                                SelfTrackingTab.Learn -> LearningTab(viewModel = viewModel)
+                                SelfTrackingTab.Care -> CareTab(profile = profile, viewModel = viewModel)
+                            }
+                            UserMode.SUPPORT_MODE -> when (activeSupportTab) {
+                                SupportTab.Home -> DashboardTab(profile = profile, viewModel = viewModel, onDeepNavigate = { activeDeepScreen = it })
+                                SupportTab.Support -> SupportModeTab(profile = profile)
+                                SupportTab.Learn -> LearningTab(viewModel = viewModel)
+                                SupportTab.Care -> CareTab(profile = profile, viewModel = viewModel)
+                                SupportTab.Notes -> JournalTab(profile = profile, viewModel = viewModel)
+                                SupportTab.Settings -> SettingsTab(profile = profile, viewModel = viewModel, onBack = {})
+                            }
+                            UserMode.EDUCATION_ONLY -> when (activeEduTab) {
+                                EducationTab.Home -> DashboardTab(profile = profile, viewModel = viewModel, onDeepNavigate = { activeDeepScreen = it })
+                                EducationTab.Learn -> LearningTab(viewModel = viewModel)
+                                EducationTab.Care -> CareTab(profile = profile, viewModel = viewModel)
+                                EducationTab.Mind -> BehaviourCheckInTab(profile = profile, viewModel = viewModel)
+                                EducationTab.Settings -> SettingsTab(profile = profile, viewModel = viewModel, onBack = {})
+                            }
+                        }
+                    }
                 }
             }
         }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
+    }
+}
+
+// ==========================================
+// SIDE PANEL (DRAWER)
+// ==========================================
+
+@Composable
+fun SidePanel(profile: Profile, viewModel: LunaViewModel, onNavigateTo: (String) -> Unit, onClose: () -> Unit) {
+    ModalDrawerSheet(modifier = Modifier.width(300.dp)) {
+        Column(
+            modifier = Modifier.fillMaxHeight().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            when (selectedTab) {
-                AppTab.Home -> DashboardTab(profile = profile, viewModel = viewModel, onTabRequested = { selectedTab = it })
-                AppTab.Cycle -> CycleTab(profile = profile, viewModel = viewModel)
-                AppTab.Mood -> EmotionalHealthTab(profile = profile, viewModel = viewModel)
-                AppTab.Learn -> LearningTab(profile = profile, viewModel = viewModel)
-                AppTab.Journal -> JournalTab(profile = profile, viewModel = viewModel)
-                AppTab.Support -> SupportTab(profile = profile, viewModel = viewModel)
-                AppTab.Care -> CareTab(profile = profile, viewModel = viewModel)
-                AppTab.Settings -> SettingsTab(profile = profile, viewModel = viewModel)
+            // Profile header
+            Box(
+                modifier = Modifier.fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(16.dp))
+                    .padding(16.dp)
+            ) {
+                Column {
+                    Box(
+                        modifier = Modifier.size(56.dp).clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            profile.displayName.firstOrNull()?.uppercase() ?: "L",
+                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(profile.displayName.ifBlank { "LunaCare User" }, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    val modeLabel = when (profile.userMode) {
+                        UserMode.SELF_TRACKING.name -> "Self Tracking"
+                        UserMode.SUPPORT_MODE.name -> "Support Mode"
+                        else -> "Education Only"
+                    }
+                    Text(modeLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                }
             }
+            Spacer(modifier = Modifier.height(12.dp))
+
+            val menuItems = listOf(
+                Triple(Icons.Default.Person, "Edit Profile", "profile_edit"),
+                Triple(Icons.Default.Security, "Permission Center", "permission_center"),
+                Triple(Icons.Default.PrivacyTip, "Privacy Settings", "settings"),
+                Triple(Icons.Default.Notifications, "Notification Panel", "notifications"),
+                Triple(Icons.Default.Bookmark, "Bookmarks", "bookmarks"),
+                Triple(Icons.Default.MedicalServices, "Medical Journal", "medical_journal"),
+                Triple(Icons.Default.Alarm, "Medicine Reminders", "medicine_reminders"),
+                Triple(Icons.Default.WaterDrop, "Cup Care Tracker", "cup_tracker"),
+                Triple(Icons.Default.LocalHospital, "Health Awareness", "health_awareness"),
+                Triple(Icons.Default.LocalPharmacy, "Care & Products", "care"),
+                Triple(Icons.Default.Psychology, "AI Assistant", "ai_assistant"),
+                Triple(Icons.Default.Stars, "Premium & Subscription", "ai_assistant"),
+                Triple(Icons.Default.Palette, "Theme / Dark Mode", "settings")
+            )
+            menuItems.forEach { (icon, label, route) ->
+                NavigationDrawerItem(
+                    icon = { Icon(icon, null, modifier = Modifier.size(20.dp)) },
+                    label = { Text(label) },
+                    selected = false,
+                    onClick = { onNavigateTo(route) },
+                    modifier = Modifier.padding(vertical = 2.dp)
+                )
+            }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            NavigationDrawerItem(
+                icon = { Icon(Icons.Default.Logout, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp)) },
+                label = { Text("Logout", color = MaterialTheme.colorScheme.error) },
+                selected = false,
+                onClick = { viewModel.logout() }
+            )
+
+            // Version
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("LunaCare v2.0.0", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
+                modifier = Modifier.align(Alignment.CenterHorizontally))
         }
     }
 }
 
 // ==========================================
-// TAB 1: DASHBOARD
+// DASHBOARD TAB
 // ==========================================
-@Composable
-fun GlassCard(
-    modifier: Modifier = Modifier,
-    borderWidth: androidx.compose.ui.unit.Dp = 1.dp,
-    onClick: (() -> Unit)? = null,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    val baseModifier = if (onClick != null) modifier.clickable(onClick = onClick) else modifier
-    Card(
-        modifier = baseModifier
-            .border(
-                width = borderWidth,
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.5f),
-                        Color.White.copy(alpha = 0.12f)
-                    )
-                ),
-                shape = RoundedCornerShape(28.dp)
-            ),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(content = content)
-    }
-}
 
-// ==========================================
-// TAB 1: DASHBOARD
-// ==========================================
 @Composable
-fun DashboardTab(
-    profile: Profile,
-    viewModel: LunaViewModel,
-    onTabRequested: (AppTab) -> Unit
-) {
+fun DashboardTab(profile: Profile, viewModel: LunaViewModel, onDeepNavigate: (String) -> Unit) {
     val periodLogs by viewModel.periodLogs.collectAsState()
-    val moodLogs by viewModel.moodLogs.collectAsState()
-    val symptomLogs by viewModel.symptomLogs.collectAsState()
-    var showTrendTracker by rememberSaveable { mutableStateOf(false) }
-
-    if (showTrendTracker) {
-        SymptomTrendTrackerComponent(
-            viewModel = viewModel,
-            symptomLogs = symptomLogs,
-            periodLogs = periodLogs,
-            onBack = { showTrendTracker = false }
-        )
-        return
-    }
-
+    val behaviourLogs by viewModel.behaviourLogs.collectAsState()
     val lastLog = periodLogs.maxByOrNull { it.startDate }
     val todayStr = CycleUtils.getTodayString()
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .drawBehind {
-                // Background Glows following LunaCare Soft Modernism Palette
-                // Flowing dusty deep rose pastel blob in top-right
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFFD48B8B).copy(alpha = 0.22f), // MutedRosePrimary
-                            Color.Transparent
-                        )
-                    ),
-                    radius = size.minDimension * 0.55f,
-                    center = Offset(size.width * 0.85f, size.height * 0.15f)
-                )
-
-                // Dreamy Lavender blob in middle-left
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFF9881A8).copy(alpha = 0.20f), // LavenderSecondary
-                            Color.Transparent
-                        )
-                    ),
-                    radius = size.minDimension * 0.45f,
-                    center = Offset(size.width * 0.10f, size.height * 0.50f)
-                )
-
-                // Glowing warm coral blob in bottom-right
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFFD48C73).copy(alpha = 0.18f), // WarmCoralTertiary
-                            Color.Transparent
-                        )
-                    ),
-                    radius = size.minDimension * 0.50f,
-                    center = Offset(size.width * 0.90f, size.height * 0.85f)
-                )
-            }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            val userMode = profile.userMode
-            val access = CycleUtils.getFeatureAccess(profile)
-
-            if (userMode == "SELF_TRACKING") {
-                // =====================================
-                // SELF-CARE GRAPHICAL TRACK (USER)
-                // =====================================
-
-                // Welcome Header
-                item {
-                    Column {
-                        Text(
-                            text = "Welcome, ${profile.displayName}",
-                            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-                        Text(
-                            text = "All logs are safe, private and entirely stored offline.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                        )
-                    }
-                }
-
-                if (access.canTrackCycle) {
-                    // Cycle Wheel Card with Glass dial
-                    item {
-                        GlassCard(
-                            modifier = Modifier.fillMaxWidth().testTag("frosted_cycle_card")
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                if (lastLog == null) {
-                                    Text(
-                                        text = "Add your last period start date to unlock personal predictions and support insights.",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.padding(vertical = 12.dp)
-                                    )
-                                    Button(
-                                        onClick = { onTabRequested(AppTab.Cycle) },
-                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                                    ) {
-                                        Text("Set Start Date")
-                                    }
-                                } else {
-                                    val prediction = CycleUtils.predictNextPeriod(
-                                        periodLogs = periodLogs,
-                                        profileAverageLength = profile.averageCycleLength,
-                                        profilePeriodLength = profile.averagePeriodLength,
-                                        today = java.time.LocalDate.now()
-                                    )
-                                    val cycleDay = prediction.currentCycleDay ?: 1
-                                    val phase = prediction.phase
-
-                                    Text(
-                                        text = phase.uppercase(),
-                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(bottom = 12.dp)
-                                    )
-
-                                    // Glass dial
-                                    Box(
-                                        modifier = Modifier
-                                            .size(150.dp)
-                                            .clip(CircleShape)
-                                            .background(Color.White.copy(alpha = 0.35f))
-                                            .border(
-                                                width = 1.dp,
-                                                brush = Brush.linearGradient(
-                                                    colors = listOf(
-                                                        Color.White.copy(alpha = 0.5f),
-                                                        Color.White.copy(alpha = 0.1f)
-                                                    )
-                                                ),
-                                                shape = CircleShape
-                                            )
-                                            .padding(12.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text(
-                                                text = "Day",
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                            )
-                                            Text(
-                                                text = "$cycleDay",
-                                                fontSize = 48.sp,
-                                                fontWeight = FontWeight.Black,
-                                                color = MaterialTheme.colorScheme.primary,
-                                                lineHeight = 44.sp
-                                            )
-                                            Text(
-                                                text = "of ${prediction.predictedCycleLength}",
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                            )
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.height(16.dp))
-
-                                    // Predictions based on engine
-                                    val daysUntil = prediction.daysUntil
-                                    if (prediction.isOverdue) {
-                                        Card(
-                                            colors = CardDefaults.cardColors(
-                                                containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f)
-                                            ),
-                                            shape = RoundedCornerShape(12.dp),
-                                            modifier = Modifier.padding(horizontal = 12.dp)
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                Text("⚠️", fontSize = 16.sp)
-                                                Text(
-                                                    text = "Cycle Day $cycleDay • Period Overdue by ${prediction.overdueDays} days",
-                                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                                    color = MaterialTheme.colorScheme.onErrorContainer
-                                                )
-                                            }
-                                        }
-                                    } else {
-                                        Text(
-                                            text = when {
-                                                daysUntil == null -> "Calculating predictions..."
-                                                daysUntil < 0 -> "Period expected very soon"
-                                                daysUntil == 0L -> "Period predicted to start today!"
-                                                daysUntil == 1L -> "Period predicted tomorrow!"
-                                                else -> "Next period in $daysUntil days"
-                                            },
-                                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
-                                        )
-                                        
-                                        if (prediction.nextPeriodDate != null) {
-                                            Text(
-                                                text = "Estimated Start: ${CycleUtils.formatDisplayDate(prediction.nextPeriodDate)}",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                                                fontWeight = FontWeight.SemiBold,
-                                                modifier = Modifier.padding(top = 2.dp)
-                                            )
-                                        }
-                                    }
-
-                                    // Engine microcopy / details badge
-                                    Box(
-                                        modifier = Modifier
-                                            .padding(top = 10.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(
-                                                if (prediction.isBasedOnHistory) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
-                                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                                            )
-                                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Text(
-                                                text = if (prediction.isBasedOnHistory) "✨" else "ℹ️",
-                                                fontSize = 11.sp
-                                            )
-                                            Text(
-                                                text = if (prediction.isBasedOnHistory) {
-                                                    "Historical Engine: ${prediction.predictedCycleLength}-day avg (from ${prediction.historicalCycleCount} logged cycles)"
-                                                } else {
-                                                    "Profile default: ${prediction.predictedCycleLength}-day cycle (log more periods to enable engine)"
-                                                },
-                                                fontSize = 10.5.sp,
-                                                fontWeight = FontWeight.Medium,
-                                                color = if (prediction.isBasedOnHistory) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-
-                                    Text(
-                                        text = CycleUtils.getPhaseDescription(phase),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        textAlign = TextAlign.Center,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                                        modifier = Modifier.padding(top = 12.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    // Wellness card instead
-                    item {
-                        GlassCard(
-                            modifier = Modifier.fillMaxWidth().testTag("frosted_wellness_card")
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    text = "🌟 INDIVIDUAL WELLNESS ASSISTANCE",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(bottom = 12.dp)
-                                )
-                                Text(
-                                    text = "Supporting your health, ${profile.displayName}!",
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                    textAlign = TextAlign.Center
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "Active cycle calculations and calendars are safely hidden under your profile to align with your medical mode. Focus on sleep, daily stress registers, or water metrics.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    textAlign = TextAlign.Center,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                                )
-                                
-                                if (profile.behaviourFocuses.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Text(
-                                        text = "Active Focuses: " + profile.behaviourFocuses.joinToString(", "),
-                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Mood Check-in
-                item {
-                    var selectedMoodState by remember { mutableStateOf<String?>(null) }
-
-                    GlassCard(
-                        modifier = Modifier.fillMaxWidth().testTag("dashboard_mood_shortcut")
-                    ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
-                            Text(
-                                text = "How are you today?",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = "Log your emotional wellbeing instantly with a single touch.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                modifier = Modifier.padding(bottom = 12.dp)
-                            )
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                val moods = listOf(
-                                    Pair("😊", "Great"),
-                                    Pair("🙂", "Good"),
-                                    Pair("😐", "Okay"),
-                                    Pair("😔", "Low"),
-                                    Pair("😰", "Anxious")
-                                )
-                                moods.forEach { (emoji, label) ->
-                                    val isSelected = selectedMoodState == label
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .clickable {
-                                                selectedMoodState = label
-                                                viewModel.addMoodLog(
-                                                    mood = label,
-                                                    energy = if (label == "Great" || label == "Good") 4 else 2,
-                                                    stress = if (label == "Low" || label == "Anxious") 4 else 1,
-                                                    sleepQuality = null,
-                                                    notes = "Logged instantly via Dashboard check-in shortcut."
-                                                )
-                                            }
-                                            .background(
-                                                if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                                else Color.Transparent
-                                            )
-                                            .padding(8.dp)
-                                    ) {
-                                        Text(emoji, fontSize = 28.sp)
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = label,
-                                            fontSize = 11.sp,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                                        )
-                                    }
-                                }
-                            }
-
-                            AnimatedVisibility(selectedMoodState != null) {
-                                Surface(
-                                    modifier = Modifier.padding(top = 12.dp).fillMaxWidth(),
-                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Text(
-                                        text = "✓ Logged as '$selectedMoodState'! Keep going, your entries are private.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(10.dp),
-                                        textAlign = TextAlign.Center
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Bento Action Row
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        // Log Period Flow Action Card
-                        GlassCard(
-                            modifier = Modifier.weight(1f).testTag("action_flow"),
-                            onClick = { onTabRequested(AppTab.Cycle) }
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.WaterDrop,
-                                    contentDescription = "Log flow",
-                                    tint = MutedRosePrimary,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "Log Flow",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-
-                        // Log Wellbeing Action Card
-                        GlassCard(
-                            modifier = Modifier.weight(1f).testTag("action_mood"),
-                            onClick = { onTabRequested(AppTab.Mood) }
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.EmojiEmotions,
-                                    contentDescription = "Wellbeing",
-                                    tint = LavenderSecondary,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "Emotional",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-
-                        // Journal Card
-                        GlassCard(
-                            modifier = Modifier.weight(1f).testTag("action_journal"),
-                            onClick = { onTabRequested(AppTab.Journal) }
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.BorderColor,
-                                    contentDescription = "Journal",
-                                    tint = WarmCoralTertiary,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "Write",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Self-Care Tip of the Day
-                item {
-                    val randomTip = remember { LunaContent.selfCareTips.random() }
-                    GlassCard(
-                        modifier = Modifier.fillMaxWidth().testTag("self_care_reminder_card"),
-                        onClick = { onTabRequested(AppTab.Mood) }
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.SelfImprovement, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Today's Self-Care",
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = randomTip.title,
-                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
-                            )
-                            Text(
-                                text = randomTip.description,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                modifier = Modifier.padding(vertical = 4.dp)
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "• ${randomTip.steps.first()}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
-
-                // Dedicated Symptom Trends Quick Insights Card
-                item {
-                    val recentLogsCount = symptomLogs.size
-                    GlassCard(
-                        modifier = Modifier.fillMaxWidth().testTag("dashboard_trends_shortcut_card"),
-                        onClick = { showTrendTracker = true }
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Analytics,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "Cycle & Symptom Trends",
-                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                                
-                                Icon(
-                                    imageVector = Icons.Default.ChevronRight,
-                                    contentDescription = "View Details",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            
-                            Spacer(modifier = Modifier.height(8.dp))
-                            
-                            Text(
-                                text = "Visual Symptom Tracker",
-                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
-                            )
-                            
-                            val promptText = if (recentLogsCount > 0) {
-                                "You have $recentLogsCount logged symptoms. Click to analyze frequency distribution, comparative monthly statistics, and phase correlations."
-                            } else {
-                                "Track frequency of symptoms over the last three months. Explore visual analytics, phase correlations, and offline logs."
-                            }
-                            
-                            Text(
-                                text = promptText,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                modifier = Modifier.padding(vertical = 4.dp)
-                            )
-                        }
-                    }
-                }
-
-            } else if (userMode == "SUPPORT_MODE") {
-                // =====================================
-                // SUPPORTER / COMPANION CARE TRACKER CARD
-                // =====================================
-
-                // Supporter Welcome Header
-                item {
-                    Column {
-                        Text(
-                            text = "Companion support, ${profile.displayName}",
-                            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-                        Text(
-                            text = "Active cycles, material standards & private empathy checklist.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                        )
-                    }
-                }
-
-                // Companion Predictive Cycle Wheel Card
-                item {
-                    GlassCard(
-                        modifier = Modifier.fillMaxWidth().testTag("supporter_companion_cycle_card")
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            if (lastLog == null) {
-                                Text(
-                                    text = "Add your companion's cycle start dates in the Cycle Tracker tab to calculate predictions and access support checklists.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.padding(vertical = 12.dp)
-                                )
-                                Button(
-                                    onClick = { onTabRequested(AppTab.Cycle) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                                ) {
-                                    Text("Log Partner Period Start")
-                                }
-                            } else {
-                                val prediction = CycleUtils.predictNextPeriod(
-                                    periodLogs = periodLogs,
-                                    profileAverageLength = profile.averageCycleLength,
-                                    profilePeriodLength = profile.averagePeriodLength,
-                                    today = java.time.LocalDate.now()
-                                )
-                                val cycleDay = prediction.currentCycleDay ?: 1
-                                val phase = prediction.phase
-
-                                Text(
-                                    text = "COMPANION'S ACTIVE CYCLE STATUS",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp),
-                                    color = MaterialTheme.colorScheme.secondary,
-                                    modifier = Modifier.padding(bottom = 12.dp)
-                                )
-
-                                // Companion dial
-                                Box(
-                                    modifier = Modifier
-                                        .size(150.dp)
-                                        .clip(CircleShape)
-                                        .background(Color.White.copy(alpha = 0.35f))
-                                        .border(
-                                            width = 1.dp,
-                                            brush = Brush.linearGradient(
-                                                colors = listOf(
-                                                    Color.White.copy(alpha = 0.5f),
-                                                    Color.White.copy(alpha = 0.1f)
-                                                )
-                                            ),
-                                            shape = CircleShape
-                                        )
-                                        .padding(12.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text(
-                                            text = "Phase Day",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                        )
-                                        Text(
-                                            text = "$cycleDay",
-                                            fontSize = 44.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = MaterialTheme.colorScheme.secondary,
-                                            lineHeight = 44.sp
-                                        )
-                                        Text(
-                                            text = "of ${prediction.predictedCycleLength}",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                Text(
-                                    text = "Current Phase: $phase",
-                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.secondary
-                                )
-
-                                Spacer(modifier = Modifier.height(4.dp))
-                                
-                                val daysUntil = prediction.daysUntil
-                                if (prediction.isOverdue) {
-                                    Card(
-                                        colors = CardDefaults.cardColors(
-                                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f)
-                                        ),
-                                        shape = RoundedCornerShape(10.dp),
-                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Text("⚠️", fontSize = 14.sp)
-                                            Text(
-                                                text = "Companion's period is late by ${prediction.overdueDays} days",
-                                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                                color = MaterialTheme.colorScheme.onErrorContainer
-                                            )
-                                        }
-                                    }
-                                } else {
-                                    Text(
-                                        text = when {
-                                            daysUntil == null -> "Calculating companion predictions..."
-                                            daysUntil < 0 -> "Companion's period expected very soon."
-                                            daysUntil == 0L -> "Companion's period predicted to start today!"
-                                            daysUntil == 1L -> "Companion's period predicted tomorrow!"
-                                            else -> "Companion's next cycle estimated in $daysUntil days."
-                                        },
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    
-                                    if (prediction.nextPeriodDate != null) {
-                                        Text(
-                                            text = "Estimated Start: ${CycleUtils.formatDisplayDate(prediction.nextPeriodDate)}",
-                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                            color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f),
-                                            fontWeight = FontWeight.Medium,
-                                            modifier = Modifier.padding(top = 1.dp)
-                                        )
-                                    }
-                                }
-
-                                // Engine microcopy / details badge
-                                Box(
-                                    modifier = Modifier
-                                        .padding(top = 8.dp, bottom = 8.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(
-                                            if (prediction.isBasedOnHistory) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.25f)
-                                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                                        )
-                                        .padding(horizontal = 10.dp, vertical = 4.dp)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Text(
-                                            text = if (prediction.isBasedOnHistory) "✨" else "ℹ",
-                                            fontSize = 11.sp
-                                        )
-                                        Text(
-                                            text = if (prediction.isBasedOnHistory) {
-                                                "Historical Engine: ${prediction.predictedCycleLength}-day avg (from ${prediction.historicalCycleCount} logged cycles)"
-                                            } else {
-                                                "Profile default: ${prediction.predictedCycleLength}-day cycle (log more periods to enable engine)"
-                                            },
-                                            fontSize = 10.5.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = if (prediction.isBasedOnHistory) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(4.dp))
-
-                                // Tailored Support Advice based on phase
-                                val supportAdvice = when (phase) {
-                                    "Menstrual Phase" -> "Rest and warmth are key. Prepare warm lower-back therapy compresses, offer chamomile tea, and take over physical chores."
-                                    "Follicular Phase" -> "Support her rising creative ideas and stamina! Perfect phase for scheduling outings, exercise, and pleasant conversations."
-                                    "Ovulatory Phase" -> "Her physical and emotional energy is peak today. Listen attentively, offer compliments, and support active projects."
-                                    "Luteal Phase" -> "Estrogen is falling and PMS might develop. Keep magnesium-rich dark chocolates nearby, keep background noises soothing, and exercise patience."
-                                    else -> "Stay supportive, check in, and maintain open, gentle care dialogues."
-                                }
-
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.25f))
-                                        .padding(10.dp)
-                                ) {
-                                    Column {
-                                        Text("💡 Companion Empathy Guide:", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.secondary)
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text(supportAdvice, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Daily Support Action Checklist Bento (remember checks locally to provide playful interactiveness)
-                item {
-                    var chk1 by remember { mutableStateOf(false) }
-                    var chk2 by remember { mutableStateOf(false) }
-                    var chk3 by remember { mutableStateOf(false) }
-                    var chk4 by remember { mutableStateOf(false) }
-
-                    GlassCard(
-                        modifier = Modifier.fillMaxWidth().testTag("supporter_checklist_card")
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                text = "❤️ Daily Empathetic Support Action Checklist",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.secondary
-                            )
-                            Text(
-                                text = "Small offline actions that immensely ease menstrual comfort today:",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    val cbColors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.secondary)
-                                    Checkbox(checked = chk1, onCheckedChange = { chk1 = it }, colors = cbColors)
-                                    Text("☕ Brew high-iron Herbal Infusion (Red Raspberry or Fennel)", fontSize = 11.sp)
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    val cbColors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.secondary)
-                                    Checkbox(checked = chk2, onCheckedChange = { chk2 = it }, colors = cbColors)
-                                    Text("🍫 Lay out dark cocoa snacks (soothes magnesium cravings)", fontSize = 11.sp)
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    val cbColors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.secondary)
-                                    Checkbox(checked = chk3, onCheckedChange = { chk3 = it }, colors = cbColors)
-                                    Text("🛁 Set up warm heating pad / thermal compress on sofa", fontSize = 11.sp)
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    val cbColors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.secondary)
-                                    Checkbox(checked = chk4, onCheckedChange = { chk4 = it }, colors = cbColors)
-                                    Text("💧 Check fluid intake & prompt glass of water", fontSize = 11.sp)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Modern Menstrual Product Shopping Spec Guide Card (Aesthetic consumer council specifications!)
-                item {
-                    GlassCard(
-                        modifier = Modifier.fillMaxWidth().testTag("supporter_shopping_spec_card")
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.School, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    "Eco-Consumer Hygiene Shopping Guide",
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.secondary
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Buying pads, liners or silicone cups? Use these safety checklists:",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "• Pads/Tampons: Choose unbleached chemical-free cotton (labeled ECF or TCF to avoid dioxins). Zero artificial fragrances to protect vaginal ecosystem pH levels.\n" +
-                                       "• Menstrual Cups: Medical-grade silicone free from plasticizers or BPA. Confirm shape permits boiling sanitizations for 5-10 minutes.",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            } else {
-                // =====================================
-                // EDUCATION-ONLY COMFORT & KNOWLEDGE DASHBOARD
-                // =====================================
-                
-                // Welcome Header
-                item {
-                    Column {
-                        Text(
-                            text = "Education & Wellness, ${profile.displayName}",
-                            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-                        Text(
-                            text = "Privacy-first medical guidelines, cup hygiene and care notes.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                        )
-                    }
-                }
-
-                // Privacy/Disclaimer Focus Card
-                item {
-                    GlassCard(
-                        modifier = Modifier.fillMaxWidth().testTag("education_privacy_card")
-                    ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.HealthAndSafety,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Your Privacy & Comfort Standard",
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text(
-                                text = "LunaCare functions fully offline inside an encrypted local-only database. Because you selected Education Only, active menstrual, intimate details, or symptom cycle prediction dials are fully excluded. Focus on clinical hygiene standards and menstrual cup security guides.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                             )
-                        }
-                    }
-                }
-
-                // Selected Active Focus Areas list
-                item {
-                    GlassCard(
-                        modifier = Modifier.fillMaxWidth().testTag("education_active_focus_card")
-                    ) {
-                        Column(modifier = Modifier.padding(18.dp)) {
-                            Text(
-                                text = "📚 Your Registered Learning Focuses",
-                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.secondary
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            
-                            val activeFocuses = profile.behaviourFocuses
-                            if (activeFocuses.isEmpty()) {
-                                Text(
-                                    text = "Tap Settings on the menu to select specific topic reminders.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            } else {
-                                LazyRow(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    items(activeFocuses) { focus ->
-                                        Surface(
-                                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
-                                            shape = RoundedCornerShape(16.dp)
-                                        ) {
-                                            Text(
-                                                text = focus.replace("_", " "),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+        item {
+            Column {
+                Text(
+                    "Hello, ${profile.displayName.ifBlank { "there" }} 🌸",
+                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
+                )
+                Text(
+                    "Your data is safe and private on this device.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f)
+                )
             }
+        }
 
-            // =====================================
-            // COMMON SECTION ITEMS (Daily Guides & Safety)
-            // =====================================
-
-            // Educational Card Section Header
+        // Cycle Summary Card (only for tracking mode)
+        if (profile.userMode == UserMode.SELF_TRACKING.name) {
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Daily Knowledge Highlights",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    TextButton(onClick = { onTabRequested(AppTab.Learn) }) {
-                        Text("See All Guides", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-
-            // Educational Bento Cards
-            item {
-                LazyRow(
+                Card(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                 ) {
-                    // Tutorial 1: Menstrual Cup Basics
-                    item {
-                        GlassCard(
-                            modifier = Modifier.width(260.dp),
-                            onClick = { onTabRequested(AppTab.Learn) }
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Text(
-                                        text = "ECO-CARE",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Text(
-                                    text = "What is a Menstrual Cup?",
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = "Understand how flexible medical-grade silicone collects flow instead of absorbing it.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
-                                    maxLines = 3,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.School, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("3 min read", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
-                                }
-                            }
-                        }
-                    }
+                    Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (lastLog == null) {
+                            Icon(Icons.Default.CalendarMonth, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text("Add your first period log to get cycle predictions",
+                                style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+                        } else {
+                            val cycleDay = CycleUtils.getCurrentCycleDay(lastLog.startDate, todayStr)
+                            val predicted = CycleUtils.getPredictedNextPeriod(lastLog.startDate, profile.averageCycleLength)
+                            val daysUntil = CycleUtils.getDaysBetween(todayStr, predicted)
+                            val phase = CycleUtils.getCyclePhase(cycleDay, profile.averageCycleLength, profile.averagePeriodLength)
 
-                    // Tutorial 2: How to Fold
-                    item {
-                        GlassCard(
-                            modifier = Modifier.width(260.dp),
-                            onClick = { onTabRequested(AppTab.Learn) }
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Text(
-                                        text = "TECHNIQUE",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.secondary,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Text(
-                                    text = "Menstrual Cup Folds & Use",
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = "Master folds like the Punch-down, C-fold and 7-fold to ensure smooth, comfortable seals.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
-                                    maxLines = 3,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Spa, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("4 min read", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
+                            Text(phase, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Box(
+                                modifier = Modifier.size(140.dp).clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surface).padding(8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("Day", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                                    Text("$cycleDay", fontSize = 48.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
+                                    Text("of cycle", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                                 }
                             }
-                        }
-                    }
-
-                    // Tutorial 3: Care & Sanitization
-                    item {
-                        GlassCard(
-                            modifier = Modifier.width(260.dp),
-                            onClick = { onTabRequested(AppTab.Learn) }
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.1f),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Text(
-                                        text = "HYGIENE",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.tertiary,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Text(
-                                    text = "Boiling & Sterilization Guides",
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = "Wash daily with mild soap, boil between cycles and store securely in cotton.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
-                                    maxLines = 3,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.MenuBook, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("2 min read", fontSize = 11.sp, color = MaterialTheme.colorScheme.tertiary)
-                                }
-                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                if (daysUntil > 0) "$daysUntil days until next predicted period"
+                                else "Period predicted today",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                            )
+                            Text(CycleUtils.getPhaseDescription(phase), style = MaterialTheme.typography.bodySmall,
+                                textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                modifier = Modifier.padding(top = 8.dp))
                         }
                     }
                 }
             }
+        }
 
-            // Crisis/Emergency Support Shortcut Block
+        // Quick Actions
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                DashboardQuickCard("Log Flow", Icons.Default.WaterDrop, MutedRosePrimary, Modifier.weight(1f)) {}
+                DashboardQuickCard("Check-In", Icons.Default.Mood, LavenderSecondary, Modifier.weight(1f)) {}
+                DashboardQuickCard("Journal", Icons.Default.Create, WarmCoralTertiary, Modifier.weight(1f)) {}
+            }
+        }
+
+        // Today's self-care tip
+        item {
+            val tip = remember { LunaContent.selfCareTips.random() }
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.SelfImprovement, null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Today's Self-Care Reminder", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(tip.title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
+                    Text(tip.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("• ${tip.steps.first()}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+
+        // Religious wellness content (if set)
+        if (!profile.religion.isNullOrEmpty() && profile.religion != "PREFER_NOT_TO_SAY") {
             item {
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f),
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.4f)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onTabRequested(AppTab.Mood) }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(24.dp)
-                        )
+                val content = LunaContent.getWellnessContentForReligion(profile.religion)
+                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f))) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Wellness & Faith", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.secondary)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(content.firstOrNull() ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f))
+                    }
+                }
+            }
+        }
+
+        // Support mode reminder
+        if (profile.userMode == UserMode.SUPPORT_MODE.name) {
+            item {
+                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f))) {
+                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
+                        Icon(Icons.Default.VolunteerActivism, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(24.dp))
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
-                            Text(
-                                text = "Intimate Safety & Crisis Support",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.error
-                            )
-                            Text(
-                                text = "Need severe pain support, emergency helplines, or therapist connection?",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-                            )
+                            Text("Supporting with Care", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.tertiary)
+                            Text("Remember: respect, privacy, and consent come first. Never track another person's health data without their clear permission.",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f))
                         }
                     }
                 }
             }
+        }
+
+        // Shortcuts to deep screens
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                DashboardShortcutCard("Medical Journal", Icons.Default.MedicalServices, Modifier.weight(1f)) { onDeepNavigate("medical_journal") }
+                DashboardShortcutCard("Reminders", Icons.Default.Alarm, Modifier.weight(1f)) { onDeepNavigate("medicine_reminders") }
+            }
+        }
+
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                DashboardShortcutCard("Cup Tracker", Icons.Default.WaterDrop, Modifier.weight(1f)) { onDeepNavigate("cup_tracker") }
+                DashboardShortcutCard("AI Assistant", Icons.Default.Psychology, Modifier.weight(1f)) { onDeepNavigate("ai_assistant") }
+            }
+        }
+
+        // Crisis / Emergency shortcut
+        item {
+            Surface(
+                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth().clickable { onDeepNavigate("health_awareness") }
+            ) {
+                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.EmergencyShare, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(24.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text("Urgent Care & Emergency Signs", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.error)
+                        Text("Recognise warning signs and know when to seek help", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                    }
+                }
+            }
+        }
+
+        // Global disclaimer footer
+        item {
+            Text(
+                LunaContent.GLOBAL_DISCLAIMER,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun DashboardQuickCard(label: String, icon: ImageVector, tint: Color, modifier: Modifier, onClick: () -> Unit) {
+    Card(modifier = modifier.clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+    ) {
+        Column(modifier = Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(icon, null, tint = tint, modifier = Modifier.size(28.dp))
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(label, fontWeight = FontWeight.Bold, fontSize = 12.sp, textAlign = TextAlign.Center)
+        }
+    }
+}
+
+@Composable
+private fun DashboardShortcutCard(label: String, icon: ImageVector, modifier: Modifier, onClick: () -> Unit) {
+    Card(modifier = modifier.clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(label, fontWeight = FontWeight.Bold, fontSize = 13.sp)
         }
     }
 }
 
 // ==========================================
-// TAB 2: CYCLE & PERIOD TRACKER
+// CYCLE TAB
 // ==========================================
+
 @Composable
-fun CycleTab(
-    profile: Profile,
-    viewModel: LunaViewModel
-) {
+fun CycleTab(profile: Profile, viewModel: LunaViewModel) {
     val periodLogs by viewModel.periodLogs.collectAsState()
-    val symptomLogs by viewModel.symptomLogs.collectAsState()
-
-    var selectedCalendarDate by remember { mutableStateOf(java.time.LocalDate.now()) }
-
     var showLogDialog by remember { mutableStateOf(false) }
-
-    // Dialog state bindings
     var startDate by remember { mutableStateOf(CycleUtils.getTodayString()) }
     var endDate by remember { mutableStateOf("") }
     var flowLevel by remember { mutableStateOf("Medium") }
-    val symptomsList = listOf("Cramps", "Headache", "Back pain", "Breast tenderness", "Acne", "Fatigue", "Bloating", "Nausea", "Mood swings", "Anxiety", "Low mood", "Irritability", "Sleep issues")
     var selectedSymptoms by remember { mutableStateOf(setOf<String>()) }
     var notes by remember { mutableStateOf("") }
+    val symptomsList = listOf("Cramps", "Headache", "Back pain", "Breast tenderness", "Acne", "Fatigue", "Bloating", "Nausea", "Mood swings", "Anxiety", "Low mood", "Irritability", "Sleep issues", "Spotting", "Clots")
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column {
-                    Text(
-                        text = "Period Tracking",
-                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                    Text(
-                        text = "Track logs to personalize cycle predictions",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                    )
+                    Text("Period Tracking", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+                    Text("Track logs for personalised cycle insights", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
                 }
-
-                Button(
-                    onClick = {
-                        startDate = CycleUtils.getTodayString()
-                        endDate = ""
-                        flowLevel = "Medium"
-                        selectedSymptoms = emptySet()
-                        notes = ""
-                        showLogDialog = true
-                    },
+                Button(onClick = { startDate = CycleUtils.getTodayString(); endDate = ""; flowLevel = "Medium"; selectedSymptoms = emptySet(); notes = ""; showLogDialog = true },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     modifier = Modifier.testTag("add_period_log_button")
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Add Log")
+                    Icon(Icons.Default.Add, null); Spacer(modifier = Modifier.width(4.dp)); Text("Add Log")
                 }
             }
         }
 
-        // Active Medical Alert Disclaimers
         item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))) {
                 Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        text = "⚠️ Medical Guidelines",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "• Heavy bleeding (soaking through pads/cups hourly) or severe abdominal cramps require urgent healthcare assessment.\n• If your cycle ranges under 21 or over 45 days, consult a physician for hormonal reviews.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
+                    Text("⚠️ Safety Reminder", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                    Text("Heavy bleeding (soaking through pads/cups hourly) or severe cramps require medical assessment. Predictions are estimates — consult a doctor for medical advice.",
+                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
                 }
             }
         }
 
-        // Interactive Calendar Date Range Period Logger Card
-        item {
-            CalendarPeriodLogger(
-                viewModel = viewModel,
-                periodLogs = periodLogs,
-                onLogSaved = {
-                    showLogDialog = false
-                }
-            )
-        }
-        
-        item {
-            FlowInformationComponent()
-        }
-
-        // Visual Cycle Calendar Card
-        item {
-            var calendarYear by remember { mutableStateOf(java.time.LocalDate.now().year) }
-            var calendarMonth by remember { mutableStateOf(java.time.LocalDate.now().monthValue) }
-            val firstDayOfMonth = java.time.LocalDate.of(calendarYear, calendarMonth, 1)
-            val daysInMonth = firstDayOfMonth.lengthOfMonth()
-            val firstDayOfWeekObj = firstDayOfMonth.dayOfWeek
-            val firstDayOfWeekIndex = if (firstDayOfWeekObj.value == 7) 0 else firstDayOfWeekObj.value // Sunday = 0, Monday = 1...
-            
-            val totalCells = firstDayOfWeekIndex + daysInMonth
-            
-            Card(
-                modifier = Modifier.fillMaxWidth().testTag("visual_cycle_calendar"),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "📅 Cycle Phase Calendar & Predictor",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                    
-                    // Month & Year header row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = firstDayOfMonth.format(java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy", java.util.Locale.US)),
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Row {
-                            IconButton(
-                                onClick = {
-                                    if (calendarMonth == 1) {
-                                        calendarMonth = 12
-                                        calendarYear--
-                                    } else {
-                                        calendarMonth--
-                                    }
-                                },
-                                modifier = Modifier.testTag("calendar_prev_month")
-                            ) {
-                                Icon(Icons.Default.ChevronLeft, contentDescription = "Previous Month")
-                            }
-                            IconButton(
-                                onClick = {
-                                    if (calendarMonth == 12) {
-                                        calendarMonth = 1
-                                        calendarYear++
-                                    } else {
-                                        calendarMonth++
-                                    }
-                                },
-                                modifier = Modifier.testTag("calendar_next_month")
-                            ) {
-                                Icon(Icons.Default.ChevronRight, contentDescription = "Next Month")
-                            }
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    // Weekday headers: S M T W T F S
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        val weekdays = listOf("Su", "Mo", "Tu", "We", "Th", "Fr", "Sa")
-                        weekdays.forEach { day ->
-                            Text(
-                                text = day,
-                                modifier = Modifier.weight(1f),
-                                textAlign = TextAlign.Center,
-                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                            )
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(4.dp))
-                    
-                    // Days grid
-                    val totalRows = (totalCells + 6) / 7
-                    for (row in 0 until totalRows) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            for (col in 0..6) {
-                                val cellIdx = row * 7 + col
-                                if (cellIdx >= totalCells || cellIdx < firstDayOfWeekIndex) {
-                                    Box(modifier = Modifier.weight(1f).aspectRatio(1f))
-                                } else {
-                                    val dayNum = cellIdx - firstDayOfWeekIndex + 1
-                                    val cellDate = java.time.LocalDate.of(calendarYear, calendarMonth, dayNum)
-                                    val isSelected = selectedCalendarDate == cellDate
-                                    
-                                    val latestPeriodLog = periodLogs.maxByOrNull { it.startDate }
-                                    val lastPeriodStartDate = latestPeriodLog?.startDate
-                                    val averageCycleLength = profile.averageCycleLength
-                                    val periodLength = profile.averagePeriodLength
-                                    
-                                    var dayPhase = "Follicular Phase"
-                                    var dayColor = Color.Transparent
-                                    var onDayColor = MaterialTheme.colorScheme.onSurface
-                                    
-                                    if (!lastPeriodStartDate.isNullOrEmpty()) {
-                                        val startLocalDate = try { java.time.LocalDate.parse(lastPeriodStartDate) } catch (e: Exception) { null }
-                                        if (startLocalDate != null) {
-                                            val daysSinceStart = java.time.temporal.ChronoUnit.DAYS.between(startLocalDate, cellDate)
-                                            if (daysSinceStart >= 0) {
-                                                val cycleDay = (daysSinceStart % averageCycleLength).toInt() + 1
-                                                dayPhase = CycleUtils.getCyclePhase(cycleDay, averageCycleLength, periodLength)
-                                                
-                                                when (dayPhase) {
-                                                    "Menstrual Phase" -> {
-                                                        dayColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f)
-                                                        onDayColor = MaterialTheme.colorScheme.onErrorContainer
-                                                    }
-                                                    "Follicular Phase" -> {
-                                                        dayColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
-                                                        onDayColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                                    }
-                                                    "Ovulatory Phase" -> {
-                                                        dayColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)
-                                                        onDayColor = MaterialTheme.colorScheme.onSecondaryContainer
-                                                    }
-                                                    "Luteal Phase" -> {
-                                                        dayColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.2f)
-                                                        onDayColor = MaterialTheme.colorScheme.onTertiaryContainer
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .aspectRatio(1f)
-                                            .padding(2.dp)
-                                            .clip(CircleShape)
-                                            .background(
-                                                if (isSelected) MaterialTheme.colorScheme.primary 
-                                                else dayColor
-                                            )
-                                            .clickable { selectedCalendarDate = cellDate }
-                                            .border(
-                                                width = if (cellDate == java.time.LocalDate.now()) 1.5.dp else 0.dp,
-                                                color = if (cellDate == java.time.LocalDate.now()) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                                shape = CircleShape
-                                            )
-                                            .testTag("calendar_day_${calendarYear}_${calendarMonth}_${dayNum}"),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text(
-                                                text = dayNum.toString(),
-                                                style = MaterialTheme.typography.bodyMedium.copy(
-                                                    fontWeight = if (isSelected || cellDate == java.time.LocalDate.now()) FontWeight.Black else FontWeight.Normal
-                                                ),
-                                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else onDayColor
-                                            )
-                                            
-                                            if (!isSelected && dayPhase == "Menstrual Phase" && dayColor != Color.Transparent) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(4.dp)
-                                                        .clip(CircleShape)
-                                                        .background(MaterialTheme.colorScheme.error)
-                                                )
-                                            } else if (!isSelected && dayPhase == "Ovulatory Phase" && dayColor != Color.Transparent) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(4.dp)
-                                                        .clip(CircleShape)
-                                                        .background(MaterialTheme.colorScheme.secondary)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(12.dp))
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                    Spacer(modifier = Modifier.height(12.dp))
-                    
-                    // Detail selection block
-                    selectedCalendarDate?.let { date ->
-                        val latestPeriodLog = periodLogs.maxByOrNull { it.startDate }
-                        val lastPeriodStartDate = latestPeriodLog?.startDate
-                        val averageCycleLength = profile.averageCycleLength
-                        val periodLength = profile.averagePeriodLength
-                        
-                        var computedPhase = "Unknown Phase"
-                        var computedCycleDay: Int? = null
-                        var computedAdvice = ""
-                        
-                        if (!lastPeriodStartDate.isNullOrEmpty()) {
-                            val startLocalDate = try { java.time.LocalDate.parse(lastPeriodStartDate) } catch (e: Exception) { null }
-                            if (startLocalDate != null) {
-                                val daysSinceStart = java.time.temporal.ChronoUnit.DAYS.between(startLocalDate, date)
-                                if (daysSinceStart >= 0) {
-                                    computedCycleDay = (daysSinceStart % averageCycleLength).toInt() + 1
-                                    computedPhase = CycleUtils.getCyclePhase(computedCycleDay, averageCycleLength, periodLength)
-                                    computedAdvice = CycleUtils.getPhaseDescription(computedPhase)
-                                } else {
-                                    computedPhase = "Follicular Phase"
-                                    computedAdvice = CycleUtils.getPhaseDescription(computedPhase)
-                                }
-                            } else {
-                                computedAdvice = "Prediction loaded from baseline profile markers."
-                            }
-                        } else {
-                            computedAdvice = "⚠️ Add an Active Period Log to unlock dynamic phase predictions!"
-                        }
-                        
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = date.format(java.time.format.DateTimeFormatter.ofPattern("EEEE, MMM d, yyyy", java.util.Locale.US)),
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                if (computedCycleDay != null) {
-                                    Text(
-                                        text = "Day $computedCycleDay of Cycle",
-                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                            
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically, 
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(10.dp)
-                                        .clip(CircleShape)
-                                        .background(
-                                            when (computedPhase) {
-                                                "Menstrual Phase" -> MaterialTheme.colorScheme.error
-                                                "Follicular Phase" -> MaterialTheme.colorScheme.primary
-                                                "Ovulatory Phase" -> MaterialTheme.colorScheme.secondary
-                                                "Luteal Phase" -> MaterialTheme.colorScheme.tertiary
-                                                else -> Color.Gray
-                                            }
-                                        )
-                                )
-                                Text(
-                                    text = computedPhase,
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = when (computedPhase) {
-                                        "Menstrual Phase" -> MaterialTheme.colorScheme.error
-                                        "Follicular Phase" -> MaterialTheme.colorScheme.primary
-                                        "Ovulatory Phase" -> MaterialTheme.colorScheme.secondary
-                                        "Luteal Phase" -> MaterialTheme.colorScheme.tertiary
-                                        else -> MaterialTheme.colorScheme.onSurface
-                                    }
-                                )
-                            }
-                            
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = computedAdvice,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(12.dp))
-                    
-                    // Legend Row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        listOf(
-                            Pair("Period", MaterialTheme.colorScheme.error),
-                            Pair("Follicular", MaterialTheme.colorScheme.primary),
-                            Pair("Ovulatory", MaterialTheme.colorScheme.secondary),
-                            Pair("Luteal", MaterialTheme.colorScheme.tertiary)
-                        ).forEach { (name, color) ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .clip(CircleShape)
-                                        .background(color)
-                                )
-                                Text(name, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Physical Symptoms Logger Linked to Cycle Date
-        item {
-            SymptomLoggerComponent(
-                viewModel = viewModel,
-                symptomLogs = symptomLogs,
-                selectedDate = selectedCalendarDate
-            )
-        }
-
-        // Period Log History
         if (periodLogs.isEmpty()) {
             item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(50.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CalendarToday,
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)
-                    )
+                Column(modifier = Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.CalendarToday, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f))
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "No log history. Click 'Add Log' above to track your first date.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                    )
+                    Text("No logs yet. Tap 'Add Log' to track your first period.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
                 }
             }
         } else {
             items(periodLogs) { log ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                ) {
+                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column {
-                                Text(
-                                    text = "Period Started: ${CycleUtils.formatDisplayDate(log.startDate)}",
-                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
-                                )
-                                if (!log.endDate.isNullOrEmpty()) {
-                                    Text(
-                                        text = "Ended: ${CycleUtils.formatDisplayDate(log.endDate)}",
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                } else {
-                                    Text(
-                                        text = "Active Bleeding (Ongoing)",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
+                                Text("Started: ${CycleUtils.formatDisplayDate(log.startDate)}", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
+                                if (!log.endDate.isNullOrEmpty()) Text("Ended: ${CycleUtils.formatDisplayDate(log.endDate)}", style = MaterialTheme.typography.bodySmall)
+                                else Text("Active / Ongoing", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                             }
-
                             IconButton(onClick = { viewModel.deletePeriodLog(log.id) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                                Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
                             }
                         }
-
                         Spacer(modifier = Modifier.height(8.dp))
-
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(MaterialTheme.colorScheme.primaryContainer)
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Text(
-                                    text = "Flow: ${log.flowLevel}",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
+                        Box(modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.primaryContainer).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                            Text("Flow: ${log.flowLevel}", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
                         }
-
                         if (log.symptoms.isNotEmpty()) {
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Symptoms tagged:",
-                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
-                            )
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                log.symptoms.forEach { symptom ->
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.secondaryContainer)
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                    ) {
-                                        Text(
-                                            text = symptom,
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.secondary
-                                        )
+                            Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                log.symptoms.forEach { s ->
+                                    Box(modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                                        Text(s, fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
                                     }
                                 }
                             }
-                        }
-
-                        if (!log.notes.isNullOrEmpty()) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Notes: ${log.notes}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-                            )
                         }
                     }
                 }
@@ -3012,2624 +1538,1460 @@ fun CycleTab(
         }
     }
 
-    // Add Log Dialog
     if (showLogDialog) {
-        androidx.compose.ui.window.Dialog(
-            onDismissRequest = { showLogDialog = false }
-        ) {
-            CalendarPeriodLogger(
-                viewModel = viewModel,
-                periodLogs = periodLogs,
-                onLogSaved = { showLogDialog = false }
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            FlowInformationComponent()
-        }
+        AlertDialog(
+            onDismissRequest = { showLogDialog = false },
+            title = { Text("Log Period") },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(value = startDate, onValueChange = { startDate = it }, label = { Text("Start Date (YYYY-MM-DD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = endDate, onValueChange = { endDate = it }, label = { Text("End Date (optional)") }, placeholder = { Text("Leave blank if ongoing") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    Text("Flow Level", fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("Spotting", "Light", "Medium", "Heavy").forEach { level ->
+                            val sel = flowLevel == level
+                            Box(modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
+                                .background(if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+                                .clickable { flowLevel = level }.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                                Text(level, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                    Text("Symptoms", fontWeight = FontWeight.Bold)
+                    LazyVerticalGrid(columns = GridCells.Fixed(2), modifier = Modifier.height(200.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        items(symptomsList) { s ->
+                            val checked = selectedSymptoms.contains(s)
+                            Row(modifier = Modifier.fillMaxWidth().clickable { selectedSymptoms = if (checked) selectedSymptoms - s else selectedSymptoms + s }, verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = checked, onCheckedChange = { selectedSymptoms = if (checked) selectedSymptoms - s else selectedSymptoms + s })
+                                Text(s, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                    OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes (private)") }, modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (CycleUtils.isValidDate(startDate)) {
+                        viewModel.addPeriodLog(startDate, endDate.ifBlank { null }, flowLevel, selectedSymptoms.toList(), notes.ifBlank { null })
+                        showLogDialog = false
+                    }
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { showLogDialog = false }) { Text("Cancel") } }
+        )
     }
 }
 
 // ==========================================
-// TAB 3: EMOTIONAL HEALTH & MOOD
+// BEHAVIOUR CHECK-IN TAB (full 17-field)
 // ==========================================
+
 @Composable
-fun EmotionalHealthTab(
-    profile: Profile,
-    viewModel: LunaViewModel
-) {
-    val moodLogs by viewModel.moodLogs.collectAsState()
-
-    var showMoodDialog by remember { mutableStateOf(false) }
-
-    // Dialog state bindings
-    var selectedMood by remember { mutableStateOf("Okay") }
-    var energyStr by remember { mutableStateOf(5f) }
-    var stressStr by remember { mutableStateOf(5f) }
-    var sleepQualityStr by remember { mutableStateOf(5f) }
-    var notes by remember { mutableStateOf("") }
-
-    // Emergency Crisis Overlay State
+fun BehaviourCheckInTab(profile: Profile, viewModel: LunaViewModel) {
+    val behaviourLogs by viewModel.behaviourLogs.collectAsState()
+    var showDialog by remember { mutableStateOf(false) }
     var showCrisisOverlay by remember { mutableStateOf(false) }
 
-    val moods = listOf(
-        Pair("Great", Icons.Default.SentimentVerySatisfied),
-        Pair("Good", Icons.Default.SentimentSatisfied),
-        Pair("Okay", Icons.Default.SentimentNeutral),
-        Pair("Low", Icons.Default.SentimentDissatisfied),
-        Pair("Anxious", Icons.Default.Warning),
-        Pair("Overwhelmed", Icons.Default.Dangerous),
-        Pair("Very low", Icons.Default.SentimentVeryDissatisfied)
-    )
+    // Dialog state
+    var mood by remember { mutableStateOf("Okay") }
+    var stressLevel by remember { mutableStateOf(5f) }
+    var anxietyLevel by remember { mutableStateOf(5f) }
+    var sleepHours by remember { mutableStateOf(7f) }
+    var sleepQuality by remember { mutableStateOf(6f) }
+    var painLevel by remember { mutableStateOf(2f) }
+    var energyLevel by remember { mutableStateOf(6f) }
+    var hydration by remember { mutableStateOf("Okay") }
+    var notes by remember { mutableStateOf("") }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
+    val moodOptions = listOf("Great" to "😄", "Good" to "🙂", "Okay" to "😐", "Low" to "😔", "Anxious" to "😟", "Overwhelmed" to "😰", "Very low" to "😢")
+
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column {
-                    Text(
-                        text = "Wellbeing & Mood",
-                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                    Text(
-                        text = "Document feelings and follow patterns safely",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                    )
+                    Text("Wellbeing Check-In", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+                    Text("Private daily reflection", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
                 }
-
-                Button(
-                    onClick = {
-                        selectedMood = "Okay"
-                        energyStr = 5f
-                        stressStr = 5f
-                        sleepQualityStr = 5f
-                        notes = ""
-                        showMoodDialog = true
-                    },
+                Button(onClick = { mood = "Okay"; stressLevel = 5f; anxietyLevel = 5f; sleepHours = 7f; sleepQuality = 6f; painLevel = 2f; energyLevel = 6f; hydration = "Okay"; notes = ""; showDialog = true },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     modifier = Modifier.testTag("add_mood_log_button")
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Check In")
+                    Icon(Icons.Default.Add, null); Spacer(modifier = Modifier.width(4.dp)); Text("Check In")
                 }
             }
         }
 
-        // Pattern Insights Box (gentle & non-diagnostic)
         item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "✨ Gentle Wellbeing Insights",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    Text("✨ Wellbeing Insights", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = if (moodLogs.size >= 2) {
-                            "• Based on your check-ins, days with more sleep generally correspond with reported higher energy levels.\n• Be extra gentle with yourself during the luteal cycle phase when standard minor mood drops can develop."
-                        } else {
-                            "Keep checking in daily. After logging a couple of feelings, custom, non-diagnostic holistic patterns will populate here."
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        if (behaviourLogs.size >= 3) "Patterns from your check-ins appear here. Remember: these are reflections, not diagnoses."
+                        else "Log a few check-ins to see gentle patterns. Not diagnostic — just for self-awareness.",
+                        style = MaterialTheme.typography.bodySmall
                     )
                 }
             }
         }
 
-        // Mood Trends Chart (Vico-based Trend Chart)
-        if (moodLogs.size >= 2) {
+        if (behaviourLogs.isEmpty()) {
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    ) {
-                        Text(
-                            text = "📈 Mood & Stress Trends (Last 30 Logs)",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-                        Text(
-                            text = "Visual trend over time showing your daily emotional check-in history. Powered by off-line secure local storage.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = 12.dp)
-                        )
-                        
-                        val moodMap = mapOf(
-                            "Great" to 5f,
-                            "Good" to 4f,
-                            "Okay" to 3f,
-                            "Low" to 2f,
-                            "Anxious" to 1.5f,
-                            "Overwhelmed" to 1f,
-                            "Very low" to 0.5f
-                        )
-                        val sortedLogs = moodLogs
-                            .sortedBy { it.date }
-                            .takeLast(30)
-                        val yValues = sortedLogs.map { log ->
-                            moodMap[log.mood] ?: 3f
-                        }.toTypedArray()
-                        
-                        com.patrykandpatrick.vico.compose.chart.Chart(
-                            chart = com.patrykandpatrick.vico.compose.chart.line.lineChart(),
-                            model = com.patrykandpatrick.vico.core.entry.entryModelOf(*yValues),
-                            startAxis = com.patrykandpatrick.vico.compose.axis.vertical.rememberStartAxis(
-                                valueFormatter = { value, _ ->
-                                    when (value.toInt()) {
-                                        5 -> "Great"
-                                        4 -> "Good"
-                                        3 -> "Okay"
-                                        2 -> "Low"
-                                        1 -> "Anxious"
-                                        else -> ""
-                                    }
-                                }
-                            ),
-                            bottomAxis = com.patrykandpatrick.vico.compose.axis.horizontal.rememberBottomAxis(
-                                valueFormatter = { value, _ ->
-                                    val idx = value.toInt()
-                                    if (idx in sortedLogs.indices) {
-                                        val dateRaw = sortedLogs[idx].date
-                                        dateRaw.substringAfter("-") // Shows MM-DD
-                                    } else ""
-                                }
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(160.dp)
-                        )
-                    }
-                }
-            }
-        }
-
-        // Mood History List
-        if (moodLogs.isEmpty()) {
-            item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(50.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Mood,
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)
-                    )
+                Column(modifier = Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.Mood, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f))
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Private emotional logs live offline. Tap Check In above to create your first entry.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                    )
+                    Text("No check-ins yet. Tap 'Check In' to start your daily reflection.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
                 }
             }
         } else {
-            items(moodLogs) { log ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                ) {
+            items(behaviourLogs) { log ->
+                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
+                    containerColor = if (log.crisisFlag) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                    else MaterialTheme.colorScheme.surface
+                )) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.secondaryContainer),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = moods.find { it.first == log.mood }?.second ?: Icons.Default.Mood,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.secondary
-                                    )
-                                }
+                                Text(moodOptions.find { it.first == log.mood }?.second ?: "😐", fontSize = 28.sp)
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
-                                    Text(
-                                        text = log.mood,
-                                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
-                                    )
-                                    Text(
-                                        text = CycleUtils.formatDisplayDate(log.date),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                    )
+                                    Text(log.mood, fontWeight = FontWeight.Bold)
+                                    Text(CycleUtils.formatDisplayDate(log.logDate), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                                 }
                             }
-
-                            IconButton(onClick = { viewModel.deleteMoodLog(log.id) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                            IconButton(onClick = { viewModel.deleteBehaviourLog(log.id) }) {
+                                Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
                             }
                         }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text("Energy: ${log.energy}/10", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                            Text("Stress: ${log.stress}/10", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                            if (log.sleepQuality != null) {
-                                Text("Sleep: ${log.sleepQuality}/10", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                            }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            MiniChip("😴 Sleep ${log.sleepHours}h")
+                            MiniChip("😓 Stress ${log.stressLevel}/10")
+                            MiniChip("⚡ Energy ${log.energyLevel}/10")
                         }
-
-                        if (!log.notes.isNullOrEmpty()) {
+                        if (log.crisisFlag) {
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Reflection: ${log.notes}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Add Mood Dialog
-    if (showMoodDialog) {
-        AlertDialog(
-            onDismissRequest = { showMoodDialog = false },
-            title = { Text("Daily Wellbeing Journal") },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Text("Select Your Mood", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-
-                    // FlowRow or simple scroll row of icon buttons
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        moods.forEach { item ->
-                            val isSelected = selectedMood == item.first
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-                                    .clickable { selectedMood = item.first }
-                                    .padding(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = item.second,
-                                    contentDescription = null,
-                                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                    modifier = Modifier.size(36.dp)
-                                )
-                                Text(
-                                    text = item.first,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                )
-                            }
-                        }
-                    }
-
-                    // Sliders
-                    Column {
-                        Text("Energy Level: ${energyStr.toInt()}/10", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold))
-                        Slider(
-                            value = energyStr,
-                            onValueChange = { energyStr = it },
-                            valueRange = 1f..10f,
-                            steps = 8
-                        )
-                    }
-
-                    Column {
-                        Text("Stress Level: ${stressStr.toInt()}/10", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold))
-                        Slider(
-                            value = stressStr,
-                            onValueChange = { stressStr = it },
-                            valueRange = 1f..10f,
-                            steps = 8
-                        )
-                    }
-
-                    Column {
-                        Text("Sleep Quality: ${sleepQualityStr.toInt()}/10", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold))
-                        Slider(
-                            value = sleepQualityStr,
-                            onValueChange = { sleepQualityStr = it },
-                            valueRange = 1f..10f,
-                            steps = 8
-                        )
-                    }
-
-                    OutlinedTextField(
-                        value = notes,
-                        onValueChange = { notes = it },
-                        label = { Text("What made you feel this way? (Optional)") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        // Check for crisis trigger words
-                        val isTrigger = (selectedMood == "Very low" || selectedMood == "Low" || selectedMood == "Overwhelmed") &&
-                                (notes.contains("suicide", ignoreCase = true) ||
-                                 notes.contains("self-harm", ignoreCase = true) ||
-                                 notes.contains("die", ignoreCase = true) ||
-                                 notes.contains("kill", ignoreCase = true) ||
-                                 notes.contains("hurt myself", ignoreCase = true))
-
-                        viewModel.addMoodLog(
-                            mood = selectedMood,
-                            energy = energyStr.toInt(),
-                            stress = stressStr.toInt(),
-                            sleepQuality = sleepQualityStr.toInt(),
-                            notes = if (notes.isBlank()) null else notes
-                        )
-                        showMoodDialog = false
-
-                        if (isTrigger) {
-                            showCrisisOverlay = true
-                        }
-                    }
-                ) {
-                    Text("Save")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showMoodDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
-    // Crisis Support Dialog
-    if (showCrisisOverlay) {
-        AlertDialog(
-            onDismissRequest = { showCrisisOverlay = false },
-            title = {
-                Text(
-                    "You deserve support right now",
-                    style = MaterialTheme.typography.titleLarge.copy(color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = "We hear you, and we care deeply. Because your safety is the absolute priority, please remember that LunaCare cannot substitute professional medical or emotional crisis aid.",
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                    Text(
-                        text = "Please reach out immediately to a trusted friend, family member, or call professional helplines.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = "• US: Call or text 988 Suicide & Crisis Lifeline\n• Emergency: Dial your local emergency number (e.g., 911, 112)\n• UK: Call 111",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = { showCrisisOverlay = false },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Text("I'm reaching out")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCrisisOverlay = false }) {
-                    Text("Dismiss Info")
-                }
-            }
-        )
-    }
-}
-
-// ==========================================
-// TAB 4: EDUCATION SECTION (MENSTRUAL CUP)
-// ==========================================
-data class CupInfoTip(
-    val title: String,
-    val subtitle: String,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector,
-    val description: String,
-    val safetyNote: String,
-    val articleSlug: String
-)
-
-@Composable
-fun LearningTab(
-    profile: Profile,
-    viewModel: LunaViewModel
-) {
-    val bookmarksState by viewModel.bookmarks.collectAsState()
-
-    var selectedArticleSlug by remember { mutableStateOf<String?>(null) }
-    var selectedCategory by remember { mutableStateOf("All") }
-
-    val cupTips = listOf(
-        CupInfoTip(
-            title = "1. Strict Hand Hygiene",
-            subtitle = "Cleanliness is mandatory",
-            icon = Icons.Default.CheckCircle,
-            description = "Wash hands perfectly with unscented, oil-free soap before handling your cup. Under-nail dirt is the #1 cause of vaginal pH microbial imbalance.",
-            safetyNote = "Never touch your cup with dirty hands or standard scented sanitizers.",
-            articleSlug = "insertion-guide"
-        ),
-        CupInfoTip(
-            title = "2. Perfect The Fold",
-            subtitle = "Three popular folding styles",
-            icon = Icons.Default.Info,
-            description = "Fold using the C-Fold (flat and bent), Punch-Down (tapered point) or the 7-Fold (diagonal corner). Squeeze firmly while inserting to keep the fold.",
-            safetyNote = "Practice folding while dry to get comfortable with the cup's pop-open tension.",
-            articleSlug = "how-to-fold-cup"
-        ),
-        CupInfoTip(
-            title = "3. Smooth Insertion",
-            subtitle = "Aimed slightly backward",
-            icon = Icons.Default.Spa,
-            description = "Position in a comfortable squat. Direct the folded cup tilted back toward your tailbone (spine). Let it pop open fully once the base is past the opening.",
-            safetyNote = "Do not force it straight up. Use a drop of water-based lubricant if needed.",
-            articleSlug = "insertion-guide"
-        ),
-        CupInfoTip(
-            title = "4. Breaking the Vacuum Seal",
-            subtitle = "Never pull the stem directly",
-            icon = Icons.Default.Warning,
-            description = "To safely remove, locate the base of the cup (just above the stem). Squeeze the base firmly between thumb and index. This breaks the seal.",
-            safetyNote = "Yanking the stem without breaking the vacuum is painful and can damage cervix tissue.",
-            articleSlug = "removal-guide"
-        ),
-        CupInfoTip(
-            title = "5. Sterilization Protocol",
-            subtitle = "Boil between cycles",
-            icon = Icons.Default.Alarm,
-            description = "Before your period starts and after it ends, boil the cup in a saucepan for 5-7 minutes. Ensure it does not stick to the bottom.",
-            safetyNote = "Do not use dish soap, alcohol, bleach, or vinegar to wash the cup.",
-            articleSlug = "cleaning-sterilizing"
-        ),
-        CupInfoTip(
-            title = "6. Health & Comfort Check",
-            subtitle = "When to consult a doctor",
-            icon = Icons.Default.MedicalServices,
-            description = "Menstrual cups are safe, but require caution if you use an IUD. Keep cup time capped at 8-12 hours maximum to avoid TSS risk.",
-            safetyNote = "Seek advice if you have persistent discomfort, pain, or fever.",
-            articleSlug = "medical-caveats"
-        )
-    )
-
-    if (selectedArticleSlug == null) {
-        // Main view: Category Tabs and Article List
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            item {
-                Text(
-                    text = "Resource Library",
-                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
-                )
-                Text(
-                    text = "Professional hygiene, safety protocols, and menstrual cup guides",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                )
-            }
-
-            // Carousel of Menstrual Cup Info Cards
-            if (selectedCategory == "All" || selectedCategory == "Menstrual Cup") {
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "🎓 Menstrual Cup Education Corner",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = "Slide to learn insertion, safety, and hygiene rules:",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
-                        )
-
-                        var activeIndex by remember { mutableStateOf(0) }
-                        val currentTip = cupTips[activeIndex]
-
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selectedArticleSlug = currentTip.articleSlug }
-                                .testTag("cup_carousel_card"),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                            ),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(CircleShape)
-                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
-                                                .padding(8.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = currentTip.icon,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
-                                        Column {
-                                            Text(
-                                                text = currentTip.title,
-                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                                            )
-                                            Text(
-                                                text = currentTip.subtitle,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.secondary
-                                            )
-                                        }
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(MaterialTheme.colorScheme.secondaryContainer)
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(
-                                            text = "${activeIndex + 1}/${cupTips.size}",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                                        )
-                                    }
-                                }
-
-                                Text(
-                                    text = currentTip.description,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-
-                                // Safety Tip Note Callout Box
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f))
-                                        .padding(10.dp)
-                                ) {
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.Top
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Warning,
-                                            contentDescription = "Safety Alert",
-                                            tint = MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = "Safety Note: " + currentTip.safetyNote,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onErrorContainer
-                                        )
-                                    }
-                                }
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        IconButton(
-                                            onClick = {
-                                                if (activeIndex > 0) activeIndex--
-                                                else activeIndex = cupTips.size - 1
-                                            },
-                                            modifier = Modifier.size(36.dp).testTag("carousel_prev_btn")
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.ChevronLeft,
-                                                contentDescription = "Previous tip"
-                                            )
-                                        }
-                                        IconButton(
-                                            onClick = {
-                                                if (activeIndex < cupTips.size - 1) activeIndex++
-                                                else activeIndex = 0
-                                            },
-                                            modifier = Modifier.size(36.dp).testTag("carousel_next_btn")
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.ChevronRight,
-                                                contentDescription = "Next tip"
-                                            )
-                                        }
-                                    }
-
-                                    TextButton(
-                                        onClick = { selectedArticleSlug = currentTip.articleSlug },
-                                        modifier = Modifier.testTag("carousel_read_article_btn")
-                                    ) {
-                                        Text("Read Detailed Guide")
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Icon(
-                                            imageVector = Icons.Default.ChevronRight,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Category filter rows
-            item {
-                val categories = listOf("All", "Menstrual Cup", "Period & PMS", "Emotional Wellbeing", "Bookmarks")
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(categories) { category ->
-                        val isSelected = selectedCategory == category
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = { selectedCategory = category },
-                            label = { Text(category) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                selectedLabelColor = MaterialTheme.colorScheme.primary
-                            )
-                        )
-                    }
-                }
-            }
-
-            // Menstrual Cup Care, Safety, and Cleaning Interactive Guide Card
-            if (selectedCategory == "All" || selectedCategory == "Menstrual Cup") {
-                item {
-                    MenstrualCupGuideCard()
-                }
-            }
-
-            // Article List matching selection
-            val filteredArticles = LunaContent.articles.filter { article ->
-                when (selectedCategory) {
-                    "All" -> true
-                    "Bookmarks" -> bookmarksState.any { it.articleSlug == article.slug }
-                    else -> article.category == selectedCategory
-                }
-            }
-
-            if (filteredArticles.isEmpty()) {
-                item {
-                    Text(
-                        text = "No articles found in this category.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(24.dp)
-                    )
-                }
-            } else {
-                items(filteredArticles) { article ->
-                    val isBookmarked = bookmarksState.any { it.articleSlug == article.slug }
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { selectedArticleSlug = article.slug },
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .padding(16.dp)
-                                .fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = article.category,
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = article.title,
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                                )
-                                Text(
-                                    text = article.content.take(100) + "...",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                )
-                            }
-
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                IconButton(onClick = { viewModel.toggleBookmark(article.slug) }) {
-                                    Icon(
-                                        imageVector = if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                                        contentDescription = "Bookmark",
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                                Icon(Icons.Default.ChevronRight, null)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    } else {
-        // Detail View
-        val article = LunaContent.articles.first { it.slug == selectedArticleSlug }
-        val isBookmarked = bookmarksState.any { it.articleSlug == article.slug }
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = { selectedArticleSlug = null }) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                }
-
-                Row {
-                    IconButton(onClick = { viewModel.toggleBookmark(article.slug) }) {
-                        Icon(
-                            imageVector = if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                            contentDescription = "Bookmark",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            }
-
-            Text(
-                text = article.category,
-                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            Text(
-                text = article.title,
-                style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold)
-            )
-
-            if (article.safetyNote != null) {
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.Warning, null, tint = AlertRed)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = article.safetyNote,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer
-                        )
-                    }
-                }
-            }
-
-            Text(
-                text = article.content,
-                style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 26.sp),
-                color = MaterialTheme.colorScheme.onBackground
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Safety boilerplate
-            HorizontalDivider()
-            Text(
-                text = "Important Note: LunaCare articles represent general sanitary health education. If you suffer from sudden fever, intense lower abdominal cramp, or unexpected rashes while wearing a menstrual cup, remove the cup instantly and consult a doctor immediately.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-            )
-        }
-    }
-}
-
-// TAB 5: DIARY & MEDICAL JOURNAL SYSTEM
-// ==========================================
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-fun JournalTab(
-    profile: Profile,
-    viewModel: LunaViewModel
-) {
-    val journalEntries by viewModel.journalEntries.collectAsState()
-    val medicalEntries by viewModel.medicalJournalEntries.collectAsState()
-    val medicalReminders by viewModel.medicalReminders.collectAsState()
-
-    var activeSubTab by remember { mutableStateOf("diary") } // "diary", "medical", "reminders"
-
-    // Diary dialog state
-    var showDiaryDialog by remember { mutableStateOf(false) }
-    var diaryTitle by remember { mutableStateOf("") }
-    var diaryBody by remember { mutableStateOf("") }
-    var diaryPromptSelected by remember { mutableStateOf("") }
-
-    // Medical Log dialog state
-    var showMedicalDialog by remember { mutableStateOf(false) }
-    var medTitle by remember { mutableStateOf("") }
-    var medNotes by remember { mutableStateOf("") }
-    var medCategory by remember { mutableStateOf("Period") } // Period, PMS, PCOS/PCOD, Menstrual cup, Pain, Doctor visit, Other
-    var medPainLevel by remember { mutableStateOf(0f) }
-    var medMood by remember { mutableStateOf("Okay") }
-    var medFlow by remember { mutableStateOf("None") }
-    var medMedicines by remember { mutableStateOf("") }
-    var medDocVisit by remember { mutableStateOf(false) }
-    var medApptDate by remember { mutableStateOf("") }
-    var medDocAdvice by remember { mutableStateOf("") }
-    var medSelectedSymptoms by remember { mutableStateOf(setOf<String>()) }
-    var medError by remember { mutableStateOf("") }
-
-    // Reminder dialog state
-    var showReminderDialog by remember { mutableStateOf(false) }
-    var remTitle by remember { mutableStateOf("") }
-    var remType by remember { mutableStateOf("MEDICINE") } // MEDICINE, DOCTOR_APPOINTMENT, WATER, CUP_CLEANING, PAD_CHANGE, SELF_CARE
-    var remTime by remember { mutableStateOf("08:00") }
-    var remRule by remember { mutableStateOf("Daily") }
-    var remNotes by remember { mutableStateOf("") }
-    var remError by remember { mutableStateOf("") }
-    var remZodErrors by remember { mutableStateOf<List<com.example.data.ZodValidator.ZodError>>(emptyList()) }
-
-    var searchKeyword by remember { mutableStateOf("") }
-
-    val promptSuggestions = listOf(
-        "What am I feeling today?",
-        "What does my body need today?",
-        "What helped me feel calmer?",
-        "What do I want to tell myself kindly?"
-    )
-
-    val symptomOptions = listOf(
-        "Cramping", "Bloating", "Headache", "Backache", "Fatigue",
-        "Nausea", "Breast tenderness", "Pelvic pressure", "Insomnia", "Anxiety"
-    )
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // Headers
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(
-                    text = "Journal & Care Center",
-                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
-                )
-                Text(
-                    text = "Secure local logging and medical trackers",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                )
-            }
-        }
-
-        // Custom M3 Segmented Buttons
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                .padding(4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            listOf(
-                Pair("diary", "📖 Diary Reflections"),
-                Pair("medical", "🩺 Medical Logs"),
-                Pair("reminders", "⏰ Care Reminders")
-            ).forEach { (tabId, tabTitle) ->
-                val isSelected = activeSubTab == tabId
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
-                        .clickable {
-                            activeSubTab = tabId
-                            searchKeyword = ""
-                        }
-                        .padding(vertical = 10.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = tabTitle,
-                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-
-        // Search Bar for active list
-        if (activeSubTab != "diary") {
-            OutlinedTextField(
-                value = searchKeyword,
-                onValueChange = { searchKeyword = it },
-                placeholder = { Text("Search logs...") },
-                leadingIcon = { Icon(Icons.Default.Search, null) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-
-        // Sub-Tab Contents
-        Box(modifier = Modifier.weight(1f)) {
-            when (activeSubTab) {
-                "diary" -> {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        InteractiveJournalingComponent(
-                            viewModel = viewModel,
-                            journalEntries = journalEntries
-                        )
-                    }
-                }
-
-                "medical" -> {
-                    // MEDICAL JOURNAL SECTION
-                    val filteredMedical = medicalEntries.filter {
-                        it.title.contains(searchKeyword, ignoreCase = true) ||
-                                it.notes.contains(searchKeyword, ignoreCase = true) ||
-                                it.category.contains(searchKeyword, ignoreCase = true)
-                    }
-
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        // Mood Chart using Vico
-                        val moodMap = mapOf(
-                            "Great" to 5f,
-                            "Okay" to 4f,
-                            "Low" to 3f,
-                            "Very low" to 2f,
-                            "Anxious" to 1f
-                        )
-                        // Take the last 30 days logs that have a valid mood
-                        val recentMoodLogs = medicalEntries
-                            .sortedBy { it.entryDate }
-                            .takeLast(30)
-                            .mapNotNull { entry -> 
-                                moodMap[entry.mood]?.let { entry.entryDate to it }
-                            }
-                        
-                        if (recentMoodLogs.size >= 2) {
-                            Text(
-                                text = "Mood Patterns (Last 30 Logs)", 
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-                            val yValues = recentMoodLogs.map { it.second }.toTypedArray()
-                            com.patrykandpatrick.vico.compose.chart.Chart(
-                                chart = com.patrykandpatrick.vico.compose.chart.line.lineChart(),
-                                model = com.patrykandpatrick.vico.core.entry.entryModelOf(*yValues),
-                                startAxis = com.patrykandpatrick.vico.compose.axis.vertical.rememberStartAxis(),
-                                bottomAxis = com.patrykandpatrick.vico.compose.axis.horizontal.rememberBottomAxis(
-                                    valueFormatter = { value, _ -> 
-                                        val idx = value.toInt()
-                                        if (idx in recentMoodLogs.indices) {
-                                            // Extract MM-DD from YYYY-MM-DD
-                                            val dateRaw = recentMoodLogs[idx].first
-                                            dateRaw.substringAfter("-")
-                                        } else ""
-                                    }
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(150.dp)
-                                    .padding(bottom = 12.dp)
-                            )
-                        }
-
-                        Button(
-                            onClick = {
-                                medTitle = ""
-                                medNotes = ""
-                                medCategory = "Period"
-                                medPainLevel = 0f
-                                medMood = "Okay"
-                                medFlow = "None"
-                                medMedicines = ""
-                                medDocVisit = false
-                                medApptDate = ""
-                                medDocAdvice = ""
-                                medSelectedSymptoms = emptySet()
-                                medError = ""
-                                showMedicalDialog = true
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-                        ) {
-                            Icon(Icons.Default.MedicalServices, null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Log Medical Symptom / Appointment")
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        if (filteredMedical.isEmpty()) {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text(
-                                    "No medical symptom logs. Keep track of periods, cramps pain level, doctor appointments advice, or PCOS concerns.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        } else {
-                            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                items(filteredMedical) { entry ->
-                                    Card(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                                    ) {
-                                        Column(modifier = Modifier.padding(14.dp)) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Column {
-                                                    Text(entry.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
-                                                    Text(
-                                                        text = "Category: ${entry.category}",
-                                                        color = MaterialTheme.colorScheme.secondary,
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 11.sp
-                                                    )
-                                                }
-                                                IconButton(onClick = { viewModel.deleteMedicalJournalEntry(entry.id) }) {
-                                                    Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-                                                }
-                                            }
-
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text(
-                                                text = "Logged: ${CycleUtils.formatDisplayDate(entry.entryDate)}",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            Text("Mood: ${entry.mood} | Flow: ${entry.flowLevel}", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                            
-                                            if (entry.painLevel > 0) {
-                                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                                                    Text("Pain Level: ", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                                    val color = if (entry.painLevel >= 7) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                                                    Text("${entry.painLevel}/10", fontSize = 12.sp, color = color, fontWeight = FontWeight.Black)
-                                                }
-                                            }
-
-                                            if (entry.symptoms.isNotEmpty()) {
-                                                Spacer(modifier = Modifier.height(4.dp))
-                                                Text("Symptoms: ${entry.symptoms.joinToString()}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            }
-
-                                            if (entry.medicinesTaken.isNotBlank()) {
-                                                Spacer(modifier = Modifier.height(4.dp))
-                                                Text("Medications: ${entry.medicinesTaken}", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                                            }
-
-                                            if (entry.notes.isNotBlank()) {
-                                                Spacer(modifier = Modifier.height(6.dp))
-                                                Text(entry.notes, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            }
-
-                                            if (entry.doctorVisit) {
-                                                Spacer(modifier = Modifier.height(8.dp))
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .clip(RoundedCornerShape(8.dp))
-                                                        .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f))
-                                                        .padding(8.dp)
-                                                ) {
-                                                    Column {
-                                                        Text("🩺 Clinical Advisory", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.secondary)
-                                                        if (entry.appointmentDate != null) {
-                                                            Text("Appt Date: ${entry.appointmentDate}", fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                                        }
-                                                        if (entry.doctorAdvice != null) {
-                                                            Text("Advice: ${entry.doctorAdvice}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                "reminders" -> {
-                    // REMINDERS SECTION with Safety Guides
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f))
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Text("🩺 Care Reminders Safety warning", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    "Always follow clinical directions, prescriptions, and exact water goals. Never delay professional consultations based on automated logs.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        Button(
-                            onClick = {
-                                remTitle = ""
-                                remType = "MEDICINE"
-                                remTime = "08:00"
-                                remRule = "Daily"
-                                remNotes = ""
-                                remError = ""
-                                remZodErrors = emptyList()
-                                showReminderDialog = true
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.Alarm, null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Set New Care/Meds Reminder")
-                        }
-
-                        if (medicalReminders.isEmpty()) {
-                            Text(
-                                "No reminders set up yet. Tap button to set standard cycles or medicine alarms.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(vertical = 12.dp),
-                                textAlign = TextAlign.Center
-                            )
-                        } else {
-                            medicalReminders.forEach { reminder ->
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(14.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column {
-                                            Text(reminder.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                                            Text("Type: ${reminder.reminderType} | Rule: ${reminder.repeatRule}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            Text("⏰ Time: ${reminder.reminderTime}", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                                            if (!reminder.notes.isNullOrBlank()) {
-                                                Text("Note: ${reminder.notes}", fontSize = 11.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
-                                            }
-                                        }
-                                        IconButton(onClick = { viewModel.deleteMedicalReminder(reminder.id) }) {
-                                            Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // DIALOGS:
-
-    // 1. Write Diary Note Dialog
-    if (showDiaryDialog) {
-        AlertDialog(
-            onDismissRequest = { showDiaryDialog = false },
-            title = { Text("Private Journal reflections") },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text("Inspirational Prompts:", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        items(promptSuggestions) { prompt ->
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (diaryBody.startsWith(prompt)) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
-                                    .clickable { diaryBody = "$prompt\n\n$diaryBody" }
-                                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                            ) {
-                                Text(prompt, fontSize = 11.sp)
-                            }
-                        }
-                    }
-
-                    OutlinedTextField(
-                        value = diaryTitle,
-                        onValueChange = { diaryTitle = it },
-                        label = { Text("Entry Title") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    OutlinedTextField(
-                        value = diaryBody,
-                        onValueChange = { diaryBody = it },
-                        label = { Text("Write your reflections...") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(150.dp)
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val finalTitle = if (diaryTitle.isBlank()) "Reflections" else diaryTitle
-                        viewModel.addJournalEntry(
-                            title = finalTitle,
-                            body = diaryBody,
-                            moodTag = null,
-                            cyclePhase = null
-                        )
-                        showDiaryDialog = false
-                    },
-                    enabled = diaryBody.isNotBlank()
-                ) {
-                    Text("Save")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDiaryDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
-    // 2. Add Medical Journal Entry Dialog
-    if (showMedicalDialog) {
-        AlertDialog(
-            onDismissRequest = { showMedicalDialog = false },
-            title = { Text("Log Medical Symptoms & Care") },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    if (medError.isNotEmpty()) {
-                        Text(medError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                    }
-
-                    OutlinedTextField(
-                        value = medTitle,
-                        onValueChange = { medTitle = it; medError = "" },
-                        label = { Text("Short Title / Summary *") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Text("Select Medical Category:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        listOf("Period", "PMS", "PCOS/PCOD", "Pain", "Doctor visit", "Other").forEach { cat ->
-                            val isSel = medCategory == cat
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isSel) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
-                                    .clickable { medCategory = cat }
-                                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                            ) {
-                                Text(cat, fontSize = 11.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal)
-                            }
-                        }
-                    }
-
-                    Text("Pain level: ${medPainLevel.toInt()}/10", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    Slider(
-                        value = medPainLevel,
-                        onValueChange = { medPainLevel = it },
-                        valueRange = 0f..10f,
-                        steps = 9
-                    )
-
-                    Text("Today's mood:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        listOf("Great", "Okay", "Low", "Very low", "Anxious").forEach { md ->
-                            val isSel = medMood == md
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isSel) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
-                                    .clickable { medMood = md }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Text(md, fontSize = 11.sp)
-                            }
-                        }
-                    }
-
-                    Text("Symptoms present:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        symptomOptions.forEach { sym ->
-                            val isSel = medSelectedSymptoms.contains(sym)
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isSel) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant)
-                                    .clickable {
-                                        medSelectedSymptoms = if (isSel) medSelectedSymptoms - sym else medSelectedSymptoms + sym
-                                    }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Text(sym, fontSize = 11.sp)
-                            }
-                        }
-                    }
-
-                    OutlinedTextField(
-                        value = medMedicines,
-                        onValueChange = { medMedicines = it },
-                        label = { Text("Medicines / Doses Taken") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.clickable { medDocVisit = !medDocVisit }
-                    ) {
-                        Checkbox(checked = medDocVisit, onCheckedChange = { medDocVisit = it })
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("This is an actual doctor appointment", fontSize = 12.sp)
-                    }
-
-                    if (medDocVisit) {
-                        OutlinedTextField(
-                            value = medApptDate,
-                            onValueChange = { medApptDate = it },
-                            label = { Text("Appt Date (YYYY-MM-DD)") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        OutlinedTextField(
-                            value = medDocAdvice,
-                            onValueChange = { medDocAdvice = it },
-                            label = { Text("Doctor's Advice Notes") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-
-                    OutlinedTextField(
-                        value = medNotes,
-                        onValueChange = { medNotes = it },
-                        label = { Text("Additional Clinical Notes") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (medTitle.isBlank()) {
-                            medError = "Title is required."
-                            return@Button
-                        }
-                        if (medCategory.isBlank()) {
-                            medError = "Category is required."
-                            return@Button
-                        }
-                        viewModel.addMedicalJournalEntry(
-                            entryDate = CycleUtils.getTodayString(),
-                            category = medCategory,
-                            title = medTitle,
-                            notes = medNotes,
-                            symptoms = medSelectedSymptoms.toList(),
-                            painLevel = medPainLevel.toInt(),
-                            mood = medMood,
-                            flowLevel = medFlow,
-                            medicinesTaken = medMedicines,
-                            doctorVisit = medDocVisit,
-                            appointmentDate = if (medDocVisit && medApptDate.isNotBlank()) medApptDate else null,
-                            doctorAdvice = if (medDocVisit && medDocAdvice.isNotBlank()) medDocAdvice else null
-                        )
-                        showMedicalDialog = false
-                    }
-                ) {
-                    Text("Save Medical Log")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showMedicalDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
-    // 3. Add Reminder Dialog
-    if (showReminderDialog) {
-        AlertDialog(
-            onDismissRequest = { showReminderDialog = false },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Alarm, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Set Care Reminder")
-                }
-            },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    // Clinical Disclaimer & Safety Warning Notice (MANDATORY CONSTRAINT)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.25f))
-                            .border(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-                            .padding(12.dp)
-                    ) {
-                        Column {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    "Clinical Safety Notice",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.error
-                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Crisis support was shown for this entry", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                             }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                "LunaCare does not provide diagnoses or recommend drug dosages. Consult your gynecologist or general practitioner before modifying your care regime or taking any medication.",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onErrorContainer
-                            )
                         }
                     }
+                }
+            }
+        }
+    }
 
-                    // Template Presets for convenience
-                    Text("Select Template Preset:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        listOf(
-                            Triple("PCOS Pill", "MEDICINE", "08:00"),
-                            Triple("Hydration Alert", "WATER", "12:00"),
-                            Triple("Pad Change Alert", "PAD_CHANGE", "14:30"),
-                            Triple("Silicone Cup Clean", "CUP_CLEANING", "21:00")
-                        ).forEach { (tLabel, tType, tTime) ->
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f))
-                                    .clickable {
-                                        remTitle = tLabel
-                                        remType = tType
-                                        remTime = tTime
-                                        remRule = "Daily"
-                                        remZodErrors = emptyList()
-                                    }
-                                    .padding(horizontal = 8.dp, vertical = 5.dp)
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("Daily Wellbeing Check-In") },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text("How are you feeling?", fontWeight = FontWeight.Bold)
+                    Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        moodOptions.forEach { (m, emoji) ->
+                            val sel = mood == m
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.clip(RoundedCornerShape(10.dp))
+                                    .background(if (sel) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                                    .clickable { mood = m }.padding(10.dp)
                             ) {
-                                Text(tLabel, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(emoji, fontSize = 28.sp)
+                                Text(m, fontSize = 10.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal, color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                             }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // Field 1: Reminder Title
-                    val titleErr = remZodErrors.find { it.field == "title" }?.message
-                    OutlinedTextField(
-                        value = remTitle,
-                        onValueChange = { 
-                            remTitle = it
-                            remZodErrors = remZodErrors.filterNot { item -> item.field == "title" }
-                        },
-                        label = { Text("Reminder Title / Pill Name *") },
-                        singleLine = true,
-                        isError = titleErr != null,
-                        placeholder = { Text("E.g., daily vitamins, thyroid") },
-                        modifier = Modifier.fillMaxWidth().testTag("reminder_title_field")
-                    )
-                    if (titleErr != null) {
-                        Text(titleErr, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    CheckInSlider("Stress", stressLevel) { stressLevel = it }
+                    CheckInSlider("Anxiety", anxietyLevel) { anxietyLevel = it }
+                    CheckInSlider("Energy", energyLevel) { energyLevel = it }
+                    CheckInSlider("Pain", painLevel) { painLevel = it }
+                    Column {
+                        Text("Sleep hours: ${sleepHours.toInt()}h", fontWeight = FontWeight.Medium)
+                        Slider(value = sleepHours, onValueChange = { sleepHours = it }, valueRange = 0f..12f, steps = 11)
                     }
-
-                    // Field 2: Reminder Type Selection
-                    val typeErr = remZodErrors.find { it.field == "reminderType" }?.message
-                    Text("Reminder Type:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        listOf("MEDICINE", "DOCTOR_APPOINTMENT", "WATER", "CUP_CLEANING", "PAD_CHANGE", "SELF_CARE").forEach { type ->
-                            val isSel = remType == type
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isSel) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
-                                    .clickable { 
-                                        remType = type
-                                        remZodErrors = remZodErrors.filterNot { item -> item.field == "reminderType" }
-                                    }
-                                    .padding(horizontal = 8.dp, vertical = 5.dp)
-                            ) {
-                                Text(type.replace("_", " "), fontSize = 10.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal)
+                    Text("Hydration", fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("Low", "Okay", "Good", "Great").forEach { h ->
+                            val sel = hydration == h
+                            Box(modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
+                                .background(if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+                                .clickable { hydration = h }.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                                Text(h, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                             }
                         }
                     }
-                    if (typeErr != null) {
-                        Text(typeErr, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp)
-                    }
-
-                    // Field 3: Time
-                    val timeErr = remZodErrors.find { it.field == "reminderTime" }?.message
-                    OutlinedTextField(
-                        value = remTime,
-                        onValueChange = { 
-                            remTime = it
-                            remZodErrors = remZodErrors.filterNot { item -> item.field == "reminderTime" }
-                        },
-                        label = { Text("Time (HH:MM format, 24h) *") },
-                        singleLine = true,
-                        isError = timeErr != null,
-                        placeholder = { Text("E.g., 08:30 or 21:00") },
-                        modifier = Modifier.fillMaxWidth().testTag("reminder_time_field")
-                    )
-                    if (timeErr != null) {
-                        Text(timeErr, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                    }
-
-                    // Field 4: Recurring Rule
-                    val ruleErr = remZodErrors.find { it.field == "repeatRule" }?.message
-                    OutlinedTextField(
-                        value = remRule,
-                        onValueChange = { 
-                            remRule = it
-                            remZodErrors = remZodErrors.filterNot { item -> item.field == "repeatRule" }
-                        },
-                        label = { Text("Repeat Frequency *") },
-                        placeholder = { Text("E.g., Daily, Weekly, Once") },
-                        singleLine = true,
-                        isError = ruleErr != null,
-                        modifier = Modifier.fillMaxWidth().testTag("reminder_rule_field")
-                    )
-                    if (ruleErr != null) {
-                        Text(ruleErr, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                    }
-
-                    // Field 5: Notes
-                    OutlinedTextField(
-                        value = remNotes,
-                        onValueChange = { remNotes = it },
-                        label = { Text("Reminder description notes") },
-                        placeholder = { Text("E.g. after lunch with plenty of water") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Reflections (optional, private)") }, modifier = Modifier.fillMaxWidth())
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        val validationResult = com.example.data.ZodValidator.validateReminder(
-                            title = remTitle,
-                            reminderType = remType,
-                            reminderTime = remTime,
-                            repeatRule = remRule,
-                            notes = remNotes
-                        )
-                        if (!validationResult.success) {
-                            remZodErrors = validationResult.errors
-                        } else {
-                            val rData = validationResult.data!!
-                            viewModel.addMedicalReminder(
-                                title = rData.title,
-                                reminderType = rData.reminderType,
-                                reminderTime = rData.reminderTime,
-                                repeatRule = rData.repeatRule,
-                                enabled = true,
-                                notes = if (rData.notes.isNullOrBlank()) null else rData.notes
-                            )
-                            showReminderDialog = false
-                        }
-                    },
-                    modifier = Modifier.testTag("save_reminder_btn")
-                ) {
-                    Text("Save Alert")
-                }
+                Button(onClick = {
+                    val isCrisis = CrisisDetector.detect(notes, mood)
+                    viewModel.addBehaviourLog(
+                        mood = mood, stressLevel = stressLevel.toInt(), anxietyLevel = anxietyLevel.toInt(),
+                        sleepHours = sleepHours, sleepQuality = 5, painLevel = painLevel.toInt(),
+                        energyLevel = energyLevel.toInt(), hydrationLevel = hydration,
+                        foodCraving = null, caffeineIntake = null, movement = null,
+                        studyWorkPressure = 5, relationshipStress = 5, socialMediaOverload = 5,
+                        flowLevel = null, symptoms = emptyList(), notes = notes.ifBlank { null },
+                        crisisFlag = isCrisis
+                    )
+                    showDialog = false
+                    if (isCrisis) showCrisisOverlay = true
+                }) { Text("Save") }
             },
-            dismissButton = {
-                TextButton(onClick = { showReminderDialog = false }) {
-                    Text("Cancel")
+            dismissButton = { TextButton(onClick = { showDialog = false }) { Text("Cancel") } }
+        )
+    }
+
+    if (showCrisisOverlay) {
+        CrisisOverlay(onDismiss = { showCrisisOverlay = false })
+    }
+}
+
+@Composable
+private fun CheckInSlider(label: String, value: Float, onValueChange: (Float) -> Unit) {
+    Column {
+        Text("$label: ${value.toInt()}/10", fontWeight = FontWeight.Medium)
+        Slider(value = value, onValueChange = onValueChange, valueRange = 0f..10f, steps = 9)
+    }
+}
+
+@Composable
+private fun MiniChip(text: String) {
+    Box(modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant).padding(horizontal = 8.dp, vertical = 4.dp)) {
+        Text(text, fontSize = 11.sp)
+    }
+}
+
+// ==========================================
+// CRISIS OVERLAY
+// ==========================================
+
+@Composable
+fun CrisisOverlay(onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+            Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Favorite, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(32.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("You deserve support right now", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error))
+                }
+                Text("LunaCare cares about you deeply. Because your safety matters most, please reach out to a trusted person, crisis line, or emergency services right now.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+                Text("LunaCare cannot substitute professional crisis support.", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onErrorContainer)
+                HorizontalDivider(color = MaterialTheme.colorScheme.error.copy(alpha = 0.3f))
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    LunaContent.emergencyResources.take(5).forEach { (flag, type, number) ->
+                        Text("$flag $type: $number", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                    }
+                    Text("See full list under Health Awareness > Emergency Resources", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f))
+                }
+                Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error), modifier = Modifier.fillMaxWidth()) {
+                    Text("I'm reaching out for help")
                 }
             }
+        }
+    }
+}
+
+// ==========================================
+// LEARNING TAB
+// ==========================================
+
+@Composable
+fun LearningTab(viewModel: LunaViewModel) {
+    val bookmarksState by viewModel.bookmarks.collectAsState()
+    var selectedSlug by remember { mutableStateOf<String?>(null) }
+    var selectedCategory by remember { mutableStateOf("All") }
+
+    if (selectedSlug != null) {
+        val article = LunaContent.articles.firstOrNull { it.slug == selectedSlug }
+        if (article != null) {
+            ArticleDetailView(article = article, isBookmarked = bookmarksState.any { it.articleSlug == article.slug },
+                onBookmark = { viewModel.toggleBookmark(article.slug) }, onBack = { selectedSlug = null })
+        }
+        return
+    }
+
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item {
+            Text("Resource Library", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+            Text("Menstrual cup guides, period education, and emotional wellbeing", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+        }
+        item {
+            val cats = listOf("All", "Menstrual Cup", "Period & PMS", "Health Awareness", "Emotional Wellbeing", "Bookmarks")
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(cats) { cat ->
+                    FilterChip(selected = selectedCategory == cat, onClick = { selectedCategory = cat }, label = { Text(cat) },
+                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = MaterialTheme.colorScheme.primaryContainer, selectedLabelColor = MaterialTheme.colorScheme.primary))
+                }
+            }
+        }
+
+        // Menstrual cup protocol card
+        if (selectedCategory == "All" || selectedCategory == "Menstrual Cup") {
+            item {
+                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("🔑 Safe Cup Protocol", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        listOf("Wash hands with unscented soap", "Fold using C-fold or Punch-down", "Relax pelvic floor muscles", "Insert directed slightly backward", "Rotate to verify seal", "Pinch base to break seal before removal", "Empty and clean every 8–12 hours").forEach { step ->
+                            Row(modifier = Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.CheckCircle, null, tint = SuccessGreen, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(step, fontSize = 13.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        val filtered = LunaContent.articles.filter { art ->
+            when (selectedCategory) {
+                "All" -> true
+                "Bookmarks" -> bookmarksState.any { it.articleSlug == art.slug }
+                else -> art.category == selectedCategory
+            }
+        }
+
+        if (filtered.isEmpty()) {
+            item { Text("No articles in this category.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(24.dp)) }
+        } else {
+            items(filtered) { article ->
+                val isBookmarked = bookmarksState.any { it.articleSlug == article.slug }
+                Card(modifier = Modifier.fillMaxWidth().clickable { selectedSlug = article.slug }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(article.category, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(article.title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                            Text(article.content.take(90) + "…", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            IconButton(onClick = { viewModel.toggleBookmark(article.slug) }) {
+                                Icon(if (isBookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder, null, tint = MaterialTheme.colorScheme.primary)
+                            }
+                            Icon(Icons.Default.ChevronRight, null)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ArticleDetailView(article: EducationArticle, isBookmarked: Boolean, onBookmark: () -> Unit, onBack: () -> Unit) {
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+            Row {
+                IconButton(onClick = onBookmark) { Icon(if (isBookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder, null, tint = MaterialTheme.colorScheme.primary) }
+            }
+        }
+        Text(article.category, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+        Text(article.title, style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+        if (article.safetyNote != null) {
+            Surface(color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f), shape = RoundedCornerShape(12.dp)) {
+                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
+                    Icon(Icons.Default.Warning, null, tint = AlertRed, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(article.safetyNote, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                }
+            }
+        }
+        Text(article.content, style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 26.sp))
+        HorizontalDivider()
+        Text(LunaContent.GLOBAL_DISCLAIMER, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f))
+        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("← Return to Library") }
+    }
+}
+
+// ==========================================
+// CARE TAB
+// ==========================================
+
+@Composable
+fun CareTab(profile: Profile, viewModel: LunaViewModel) {
+    val context = LocalContext.current
+    val privacyMode = try { LocationPrivacyMode.valueOf(profile.locationPrivacyMode) } catch (e: Exception) { LocationPrivacyMode.OFF }
+    val tempLat by viewModel.tempLat.collectAsState()
+    val tempLng by viewModel.tempLng.collectAsState()
+    val bookmarks by viewModel.bookmarks.collectAsState()
+
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item {
+            Text("Care & Products", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+            Text("Discover period care products and find them nearby", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+        }
+
+        // Location privacy notice
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))) {
+                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.LocationOn, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text("Location: ${LocationPrivacyManager.getModeDescription(privacyMode)}", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium))
+                        if (tempLat != null) {
+                            TextButton(onClick = { viewModel.clearTempLocation() }, contentPadding = PaddingValues(0.dp)) {
+                                Text("Clear temporary location", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        items(LunaContent.careProducts) { product ->
+            val isBookmarked = bookmarks.any { it.articleSlug == "product_${product.slug}" }
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(product.emoji, fontSize = 28.sp)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(product.name, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        }
+                        IconButton(onClick = { viewModel.toggleBookmark("product_${product.slug}") }) {
+                            Icon(if (isBookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder, null, tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(product.whatItIs, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("When it helps: ${product.whenItHelps}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("What to check: ${product.whatToCheck}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
+                    if (product.safetyNote.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(8.dp)) {
+                            Text("Note: ${product.safetyNote}", modifier = Modifier.padding(8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = {
+                            val url = LocationPrivacyManager.buildGoogleMapsSearchUrl(product.nearbyQuery, tempLat, tempLng)
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                            viewModel.clearTempLocation()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                    ) {
+                        Icon(Icons.Default.LocationOn, null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Find Nearby")
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// JOURNAL TAB (legacy)
+// ==========================================
+
+@Composable
+fun JournalTab(profile: Profile, viewModel: LunaViewModel) {
+    val entries by viewModel.journalEntries.collectAsState()
+    var showDialog by remember { mutableStateOf(false) }
+    var title by remember { mutableStateOf("") }
+    var body by remember { mutableStateOf("") }
+    var search by remember { mutableStateOf("") }
+
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text("Wellness Journal", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+                    Text("Private, offline, encrypted reflections", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                }
+                Button(onClick = { title = ""; body = ""; showDialog = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.testTag("create_journal_button")) {
+                    Icon(Icons.Default.Create, null); Spacer(modifier = Modifier.width(4.dp)); Text("Write")
+                }
+            }
+        }
+        item {
+            OutlinedTextField(value = search, onValueChange = { search = it }, placeholder = { Text("Search…") }, leadingIcon = { Icon(Icons.Default.Search, null) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        }
+        val filtered = entries.filter { it.title.contains(search, true) || it.body.contains(search, true) }
+        if (filtered.isEmpty()) {
+            item {
+                Column(modifier = Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.EditNote, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("No entries yet. Tap 'Write' to start your private journal.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                }
+            }
+        } else {
+            items(filtered) { entry ->
+                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text(entry.title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                            IconButton(onClick = { viewModel.deleteJournalEntry(entry.id) }) { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
+                        }
+                        Text(CycleUtils.formatDisplayDate(entry.date), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
+                        Text(entry.body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f))
+                    }
+                }
+            }
+        }
+    }
+
+    if (showDialog) {
+        AlertDialog(onDismissRequest = { showDialog = false },
+            title = { Text("Private Journal Entry") },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = body, onValueChange = { body = it }, label = { Text("Write your thoughts…") }, modifier = Modifier.fillMaxWidth().height(180.dp))
+                }
+            },
+            confirmButton = { Button(onClick = { if (body.isNotBlank()) { viewModel.addJournalEntry(title.ifBlank { "Reflections" }, body, null, null); showDialog = false } }, enabled = body.isNotBlank()) { Text("Save") } },
+            dismissButton = { TextButton(onClick = { showDialog = false }) { Text("Cancel") } }
         )
     }
 }
 
 // ==========================================
-// TAB 6: SETTINGS & PREFERENCES
+// MEDICAL JOURNAL SCREEN
 // ==========================================
+
 @Composable
-fun SettingsTab(
-    profile: Profile,
-    viewModel: LunaViewModel
-) {
-    val context = LocalContext.current
+fun MedicalJournalScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
+    val entries by viewModel.medicalJournalEntries.collectAsState()
+    var showDialog by remember { mutableStateOf(false) }
+    var entryDate by remember { mutableStateOf(CycleUtils.getTodayString()) }
+    var category by remember { mutableStateOf("General") }
+    var entryTitle by remember { mutableStateOf("") }
+    var symptoms by remember { mutableStateOf(setOf<String>()) }
+    var painLevel by remember { mutableStateOf(0f) }
+    var notes by remember { mutableStateOf("") }
+    var doctorVisit by remember { mutableStateOf(false) }
+    var nextAppt by remember { mutableStateOf("") }
+    val categories = listOf("General", "Symptom", "Doctor Visit", "Medication", "Surgery/Procedure", "Lab Result", "Other")
+    val symptomsList = listOf("Cramps", "Bloating", "Headache", "Back pain", "Fatigue", "Nausea", "Spotting", "Clots", "Acne", "Mood changes", "Breast tenderness")
 
-    val isAutoTrackingEnabled by viewModel.isAutoTrackingEnabled.collectAsState()
-    val navigationHistory by viewModel.navigationHistory.collectAsState()
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+                    Text("Medical Journal", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+                }
+                Button(onClick = { entryDate = CycleUtils.getTodayString(); category = "General"; entryTitle = ""; symptoms = emptySet(); painLevel = 0f; notes = ""; doctorVisit = false; nextAppt = ""; showDialog = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
+                    Icon(Icons.Default.Add, null); Spacer(modifier = Modifier.width(4.dp)); Text("Add")
+                }
+            }
+        }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))) {
+                Text(LunaContent.GLOBAL_DISCLAIMER, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f))) {
+                Text("⚠️ Only take medicine as advised by a qualified healthcare professional or according to the product label.",
+                    modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium))
+            }
+        }
+        if (entries.isEmpty()) {
+            item {
+                Column(modifier = Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.MedicalServices, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("No journal entries yet. Record your symptoms, doctor visits, or health observations.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                }
+            }
+        } else {
+            items(entries) { entry ->
+                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(entry.title, fontWeight = FontWeight.Bold)
+                                Text("${entry.category} · ${CycleUtils.formatDisplayDate(entry.entryDate)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                            }
+                            IconButton(onClick = { viewModel.deleteMedicalJournalEntry(entry.id) }) { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
+                        }
+                        if (entry.painLevel > 0) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Pain: ", style = MaterialTheme.typography.bodySmall)
+                                Box(modifier = Modifier.clip(CircleShape).background(if (entry.painLevel >= 7) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                                    Text("${entry.painLevel}/10", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold))
+                                }
+                            }
+                        }
+                        if (entry.doctorVisit) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.LocalHospital, null, tint = SuccessGreen, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Doctor visit recorded", style = MaterialTheme.typography.bodySmall, color = SuccessGreen)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
+    if (showDialog) {
+        AlertDialog(onDismissRequest = { showDialog = false },
+            title = { Text("New Journal Entry") },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(value = entryTitle, onValueChange = { entryTitle = it }, label = { Text("Title") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = entryDate, onValueChange = { entryDate = it }, label = { Text("Date (YYYY-MM-DD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    Text("Category", fontWeight = FontWeight.Bold)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(categories) { cat ->
+                            FilterChip(selected = category == cat, onClick = { category = cat }, label = { Text(cat) })
+                        }
+                    }
+                    Column {
+                        Text("Pain level: ${painLevel.toInt()}/10", fontWeight = FontWeight.Medium)
+                        Slider(value = painLevel, onValueChange = { painLevel = it }, valueRange = 0f..10f, steps = 9)
+                    }
+                    Text("Symptoms", fontWeight = FontWeight.Bold)
+                    LazyVerticalGrid(columns = GridCells.Fixed(2), modifier = Modifier.height(150.dp)) {
+                        items(symptomsList) { s ->
+                            val checked = symptoms.contains(s)
+                            Row(modifier = Modifier.clickable { symptoms = if (checked) symptoms - s else symptoms + s }, verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = checked, onCheckedChange = { symptoms = if (checked) symptoms - s else symptoms + s })
+                                Text(s, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(checked = doctorVisit, onCheckedChange = { doctorVisit = it })
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Doctor visit")
+                    }
+                    if (doctorVisit) {
+                        OutlinedTextField(value = nextAppt, onValueChange = { nextAppt = it }, label = { Text("Next appointment (YYYY-MM-DD, optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    }
+                    OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Private notes (encrypted)") }, modifier = Modifier.fillMaxWidth())
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f))) {
+                        Text("⚠️ Only take medicine as advised by a qualified healthcare professional or according to the product label.", modifier = Modifier.padding(10.dp), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.addMedicalJournalEntry(entryDate, category, entryTitle.ifBlank { "Entry" }, symptoms.toList(), painLevel.toInt(), null, null, null, doctorVisit, nextAppt.ifBlank { null }, notes.ifBlank { null })
+                    showDialog = false
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { showDialog = false }) { Text("Cancel") } }
+        )
+    }
+}
+
+// ==========================================
+// MEDICINE REMINDERS SCREEN
+// ==========================================
+
+@Composable
+fun MedicineRemindersScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
+    val reminders by viewModel.medicalReminders.collectAsState()
+    var showDialog by remember { mutableStateOf(false) }
+    var reminderTitle by remember { mutableStateOf("") }
+    var reminderType by remember { mutableStateOf("Medication") }
+    var reminderTime by remember { mutableStateOf("08:00") }
+    var repeatRule by remember { mutableStateOf("Daily") }
+    var startDate by remember { mutableStateOf(CycleUtils.getTodayString()) }
+    var reasonNote by remember { mutableStateOf("") }
+
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+                    Text("Medicine Reminders", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+                }
+                Button(onClick = { reminderTitle = ""; reminderType = "Medication"; reminderTime = "08:00"; repeatRule = "Daily"; startDate = CycleUtils.getTodayString(); reasonNote = ""; showDialog = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
+                    Icon(Icons.Default.Add, null); Spacer(modifier = Modifier.width(4.dp)); Text("Add")
+                }
+            }
+        }
+        item {
+            Surface(color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f), shape = RoundedCornerShape(12.dp)) {
+                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Only take medicine as advised by a qualified healthcare professional or according to the product label.", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        if (reminders.isEmpty()) {
+            item {
+                Column(modifier = Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.Alarm, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("No reminders yet. Add your medication or supplement reminders.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                }
+            }
+        } else {
+            items(reminders) { reminder ->
+                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Alarm, null, tint = if (reminder.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f), modifier = Modifier.size(32.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(reminder.title, fontWeight = FontWeight.Bold)
+                                Text("${reminder.reminderTime} · ${reminder.repeatRule}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                                if (!reminder.reasonNote.isNullOrBlank()) Text(reminder.reasonNote, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                            }
+                        }
+                        Row {
+                            Switch(checked = reminder.enabled, onCheckedChange = { viewModel.toggleReminderEnabled(reminder) })
+                            IconButton(onClick = { viewModel.deleteMedicalReminder(reminder.id) }) { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showDialog) {
+        AlertDialog(onDismissRequest = { showDialog = false },
+            title = { Text("New Reminder") },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(value = reminderTitle, onValueChange = { reminderTitle = it }, label = { Text("Medicine / reminder name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = reasonNote, onValueChange = { reasonNote = it }, label = { Text("Reason / notes (optional)") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = reminderTime, onValueChange = { reminderTime = it }, label = { Text("Time (HH:mm)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    Text("Repeat", fontWeight = FontWeight.Bold)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(listOf("Once", "Daily", "Weekly", "Monthly")) { rule ->
+                            FilterChip(selected = repeatRule == rule, onClick = { repeatRule = rule }, label = { Text(rule) })
+                        }
+                    }
+                    OutlinedTextField(value = startDate, onValueChange = { startDate = it }, label = { Text("Start date (YYYY-MM-DD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (reminderTitle.isNotBlank()) {
+                        viewModel.addMedicalReminder(reminderTitle, reminderType, reminderTime, repeatRule, startDate, null, null, reasonNote.ifBlank { null })
+                        showDialog = false
+                    }
+                }, enabled = reminderTitle.isNotBlank()) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { showDialog = false }) { Text("Cancel") } }
+        )
+    }
+}
+
+// ==========================================
+// CUP CARE TRACKER
+// ==========================================
+
+@Composable
+fun CupCareTrackerScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
+    val logs by viewModel.cupCareLogs.collectAsState()
+    var showDialog by remember { mutableStateOf(false) }
+    var cleanedToday by remember { mutableStateOf(false) }
+    var discomfort by remember { mutableStateOf(0f) }
+    var leakage by remember { mutableStateOf(false) }
+    var notes by remember { mutableStateOf("") }
+    var showDiscomfortWarning by remember { mutableStateOf(false) }
+
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+                    Text("Cup Care Tracker", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+                }
+                Button(onClick = { cleanedToday = false; discomfort = 0f; leakage = false; notes = ""; showDialog = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
+                    Icon(Icons.Default.Add, null); Text("Log")
+                }
+            }
+        }
+
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("🔑 Daily Cup Reminders", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    listOf("Empty every 8–12 hours", "Rinse with cold water first", "Wash with unscented mild soap", "Clean small holes with soft brush", "Boil between cycles for 5–7 minutes").forEach { tip ->
+                        Row(modifier = Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CheckCircle, null, tint = SuccessGreen, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(tip, fontSize = 13.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        if (logs.isEmpty()) {
+            item {
+                Column(modifier = Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("🌙", fontSize = 48.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("No cup logs yet. Track insertion, emptying, cleaning, and comfort.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                }
+            }
+        } else {
+            items(logs) { log ->
+                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
+                    containerColor = if (log.discomfortLevel >= 7) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f) else MaterialTheme.colorScheme.surface
+                )) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(CycleUtils.formatDisplayDate(log.logDate), fontWeight = FontWeight.Bold)
+                            IconButton(onClick = { viewModel.deleteCupCareLog(log.id) }) { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                            MiniChip(if (log.cleanedToday) "✅ Cleaned" else "❌ Not cleaned")
+                            MiniChip("Discomfort: ${log.discomfortLevel}/10")
+                            if (log.leakageIssue) MiniChip("⚠️ Leakage")
+                        }
+                        if (log.discomfortLevel >= 7) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(8.dp)) {
+                                Text("High discomfort reported. Do not force use. Remove gently if possible and seek professional advice if pain continues.", modifier = Modifier.padding(10.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showDialog) {
+        AlertDialog(onDismissRequest = { showDialog = false },
+            title = { Text("Log Cup Care") },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(checked = cleanedToday, onCheckedChange = { cleanedToday = it })
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Cleaned today")
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(checked = leakage, onCheckedChange = { leakage = it })
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Leakage issue")
+                    }
+                    Column {
+                        Text("Discomfort level: ${discomfort.toInt()}/10", fontWeight = FontWeight.Medium)
+                        Slider(value = discomfort, onValueChange = { discomfort = it }, valueRange = 0f..10f, steps = 9)
+                        if (discomfort >= 7) {
+                            Surface(color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f), shape = RoundedCornerShape(8.dp)) {
+                                Text("Do not force use. Remove gently if possible and seek professional advice if pain continues.", modifier = Modifier.padding(8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                            }
+                        }
+                    }
+                    OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes (private)") }, modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.addCupCareLog(null, null, cleanedToday, discomfort.toInt(), leakage, notes.ifBlank { null })
+                    showDialog = false
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { showDialog = false }) { Text("Cancel") } }
+        )
+    }
+}
+
+// ==========================================
+// HEALTH AWARENESS SCREEN
+// ==========================================
+
+@Composable
+fun HealthAwarenessScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
+    var selectedTopic by remember { mutableStateOf<HealthAwarenessTopic?>(null) }
+
+    if (selectedTopic != null) {
+        val topic = selectedTopic!!
+        Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { selectedTopic = null }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+                Text(topic.title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+                Spacer(modifier = Modifier.width(40.dp))
+            }
+            Text("${topic.emoji}  ${topic.summary}", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium))
+            Text(topic.content, style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 24.sp))
+            if (topic.symptoms.isNotEmpty()) {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text("Common signs people report:", fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        topic.symptoms.forEach { s ->
+                            Row(modifier = Modifier.padding(vertical = 2.dp)) {
+                                Text("• ", color = MaterialTheme.colorScheme.primary)
+                                Text(s, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            }
+            Surface(color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f), shape = RoundedCornerShape(12.dp)) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("⚠️ When to seek help", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                    Text(topic.whenToSeekHelp, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+                }
+            }
+            HorizontalDivider()
+            Text(topic.disclaimer, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f))
+            Text(LunaContent.REGIONAL_TERMINOLOGY_NOTE, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f))
+            OutlinedButton(onClick = { selectedTopic = null }, modifier = Modifier.fillMaxWidth()) { Text("← Back to Health Awareness") }
+        }
+        return
+    }
+
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+                Column {
+                    Text("Health Awareness", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+                    Text("Educational only — not diagnosis", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                }
+            }
+        }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))) {
+                Text(LunaContent.REGIONAL_TERMINOLOGY_NOTE, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        items(LunaContent.healthAwarenessTopics) { topic ->
+            Card(modifier = Modifier.fillMaxWidth().clickable { selectedTopic = topic }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(topic.emoji, fontSize = 32.sp)
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(topic.title, fontWeight = FontWeight.Bold)
+                        Text(topic.summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                    Icon(Icons.Default.ChevronRight, null)
+                }
+            }
+        }
+        // Emergency resources
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f))) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.EmergencyShare, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Emergency Resources", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LunaContent.emergencyResources.forEach { (flag, type, number) ->
+                        Text("$flag $type: $number", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 2.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// AI ASSISTANT SCREEN
+// ==========================================
+
+@Composable
+fun AiAssistantScreen(profile: Profile, viewModel: LunaViewModel, onBack: () -> Unit) {
+    var userInput by remember { mutableStateOf("") }
+    var messages by remember { mutableStateOf(listOf<Pair<Boolean, String>>()) } // isUser, text
+    var showPaywall by remember { mutableStateOf(false) }
+
+    val isLimitReached = viewModel.isAiLimitReached()
+    val remaining = viewModel.getRemainingAiMessages()
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Top bar
+        TopAppBar(
+            title = {
+                Column {
+                    Text("AI Wellness Assistant", fontWeight = FontWeight.Bold)
+                    Text(if (profile.isPremium) "Premium · $remaining messages left" else "Free · $remaining of ${LunaViewModel.FREE_AI_MESSAGES_LIMIT} left",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                }
+            },
+            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } }
+        )
+
+        // Disclaimer banner
+        Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), modifier = Modifier.fillMaxWidth()) {
+            Text(
+                "Educational only. Not medical advice. No diagnosis. No medication dosage. For emergencies, contact emergency services.",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        // Messages
+        LazyColumn(modifier = Modifier.weight(1f).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (messages.isEmpty()) {
+                item {
+                    Column(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.Psychology, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("Ask me anything about period care, menstrual cups, mood, or wellness education.", textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("I cannot diagnose, prescribe, or replace medical professionals.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f), textAlign = TextAlign.Center)
+                    }
+                }
+            }
+            items(messages) { (isUser, text) ->
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start) {
+                    Surface(
+                        color = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(if (isUser) 16.dp else 16.dp),
+                        modifier = Modifier.widthIn(max = 300.dp)
+                    ) {
+                        Text(text, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium,
+                            color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+
+        // Paywall banner
+        if (isLimitReached && !showPaywall) {
+            Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("You've reached your free AI limit.", fontWeight = FontWeight.Bold)
+                    Text("Upgrade for more wellness questions, journaling support, and learning help.", style = MaterialTheme.typography.bodySmall)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { showPaywall = true }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) { Text("Upgrade") }
+                        TextButton(onClick = {}) { Text("Maybe later") }
+                    }
+                }
+            }
+        }
+
+        // Input row
+        if (!isLimitReached) {
+            Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = userInput, onValueChange = { userInput = it },
+                    placeholder = { Text("Ask a wellness question…") },
+                    modifier = Modifier.weight(1f), singleLine = false, maxLines = 3
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                IconButton(
+                    onClick = {
+                        if (userInput.isNotBlank()) {
+                            val isCrisis = CrisisDetector.detect(userInput)
+                            if (isCrisis) {
+                                messages = messages + (false to "I notice you may be going through something very difficult. Please reach out to emergency services or a crisis line immediately. I care about your safety. LunaCare cannot provide crisis support — please contact a professional.") + (true to userInput)
+                            } else {
+                                messages = messages + (true to userInput)
+                                messages = messages + (false to "I'm here to help with educational wellness questions about periods, menstrual cups, mood, and self-care. I cannot diagnose, prescribe, or replace a doctor. [Note: AI response endpoint not yet connected — set EXPO_PUBLIC_AI_API_ENDPOINT in your environment.]")
+                            }
+                            viewModel.consumeAiMessage()
+                            userInput = ""
+                        }
+                    },
+                    enabled = userInput.isNotBlank()
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, "Send", tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+    }
+
+    if (showPaywall) {
+        Dialog(onDismissRequest = { showPaywall = false }) {
+            Card(shape = RoundedCornerShape(20.dp)) {
+                Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.Stars, null, tint = WarningAmber, modifier = Modifier.size(48.dp))
+                    Text("Upgrade to LunaCare Premium", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), textAlign = TextAlign.Center)
+                    Text("Get more AI wellness messages, unlimited journaling prompts, and priority learning content.", textAlign = TextAlign.Center)
+                    Button(onClick = { showPaywall = false }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
+                        Text("Upgrade — coming soon")
+                    }
+                    TextButton(onClick = { showPaywall = false }) { Text("Maybe later") }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// PERMISSION CENTER
+// ==========================================
+
+@Composable
+fun PermissionCenterScreen(profile: Profile, viewModel: LunaViewModel, onBack: () -> Unit) {
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+                Column {
+                    Text("Permission Center", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+                    Text("You control what LunaCare can access", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                }
+            }
+        }
+        val perms = listOf(
+            PermissionInfo(Icons.Default.LocationOn, "Location / GPS", "Used only when you tap 'Find Nearby'.", "Never", "Your device GPS", "Tap 'Find Nearby' → grant in system prompt", "Turn off in Android Settings → Apps → LunaCare → Permissions"),
+            PermissionInfo(Icons.Default.CameraAlt, "Camera", "Used only to attach photo to medical journal.", "Never", "Your camera photos (optional)", "Tap the camera icon in medical journal", "Revoke in Android Settings"),
+            PermissionInfo(Icons.Default.Mic, "Microphone", "Used only for AI voice input (if enabled).", "Never", "Your voice during AI session only", "Tap microphone icon in AI chat", "Revoke in Android Settings"),
+            PermissionInfo(Icons.Default.Notifications, "Notifications", "Used for medicine, mood, period, and cup reminders.", "On-device only", "Notification content you set", "Enable in Reminders settings", "Disable in Android Settings → Notifications")
+        )
+        items(perms) { perm ->
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(perm.icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(perm.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    PermRow("Why needed:", perm.why)
+                    PermRow("Stored to server:", perm.stored)
+                    PermRow("What is collected:", perm.collected)
+                    PermRow("When requested:", perm.whenRequested)
+                    PermRow("How to turn off:", perm.howToRevoke)
+                }
+            }
+        }
+        // Location privacy mode
+        item {
+            val privacyMode = try { LocationPrivacyMode.valueOf(profile.locationPrivacyMode) } catch (e: Exception) { LocationPrivacyMode.OFF }
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Location Privacy Mode", fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LocationPrivacyMode.values().forEach { mode ->
+                        Row(modifier = Modifier.fillMaxWidth().clickable { viewModel.updateLocationPrivacyMode(mode) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = privacyMode == mode, onClick = { viewModel.updateLocationPrivacyMode(mode) })
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(mode.name.replace("_", " "), fontWeight = FontWeight.Medium)
+                                Text(LocationPrivacyManager.getModeDescription(mode), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+data class PermissionInfo(val icon: ImageVector, val name: String, val why: String, val stored: String, val collected: String, val whenRequested: String, val howToRevoke: String)
+
+@Composable
+private fun PermRow(label: String, value: String) {
+    Row(modifier = Modifier.padding(vertical = 2.dp)) {
+        Text("$label ", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold))
+        Text(value, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+    }
+}
+
+// ==========================================
+// NOTIFICATION PANEL
+// ==========================================
+
+@Composable
+fun NotificationPanelScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
+    val notifications by viewModel.notifications.collectAsState()
+
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+                    Text("Notifications", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+                }
+                if (notifications.any { !it.isRead }) {
+                    TextButton(onClick = { viewModel.markAllNotificationsRead() }) { Text("Mark all read") }
+                }
+            }
+        }
+
+        if (notifications.isEmpty()) {
+            item {
+                Column(modifier = Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.NotificationsNone, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("No notifications yet. Reminders and care suggestions will appear here.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                }
+            }
+        } else {
+            items(notifications) { notif ->
+                Card(
+                    modifier = Modifier.fillMaxWidth().clickable { viewModel.markNotificationRead(notif.id) },
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (!notif.isRead) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else MaterialTheme.colorScheme.surface
+                    )
+                ) {
+                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
+                        Icon(
+                            when (notif.type) {
+                                "period" -> Icons.Default.WaterDrop
+                                "mood" -> Icons.Default.Mood
+                                "medicine" -> Icons.Default.LocalPharmacy
+                                "cup" -> Icons.Default.WaterDrop
+                                "ai" -> Icons.Default.Psychology
+                                "system" -> Icons.Default.Info
+                                else -> Icons.Default.Notifications
+                            }, null,
+                            tint = if (!notif.isRead) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(notif.title, fontWeight = if (!notif.isRead) FontWeight.Bold else FontWeight.Normal)
+                            Text(notif.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                        }
+                        IconButton(onClick = { viewModel.deleteNotification(notif.id) }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Default.Close, null, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// BOOKMARKS SCREEN
+// ==========================================
+
+@Composable
+fun BookmarksScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
+    val bookmarks by viewModel.bookmarks.collectAsState()
+
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+                Text("Bookmarks", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+            }
+        }
+        if (bookmarks.isEmpty()) {
+            item {
+                Column(modifier = Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Outlined.BookmarkBorder, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("No bookmarks yet. Tap the bookmark icon on articles and products to save them here.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                }
+            }
+        } else {
+            items(bookmarks) { bm ->
+                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Bookmark, null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(bm.articleSlug.replace("-", " ").replace("_", " "), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium))
+                        IconButton(onClick = { viewModel.toggleBookmark(bm.articleSlug) }) {
+                            Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// PROFILE EDIT
+// ==========================================
+
+@Composable
+fun ProfileEditScreen(profile: Profile, viewModel: LunaViewModel, onBack: () -> Unit) {
+    var displayName by remember { mutableStateOf(profile.displayName) }
+    var pronoun by remember { mutableStateOf(profile.pronoun) }
+    var customPronoun by remember { mutableStateOf(profile.customPronoun ?: "") }
+    var genderMode by remember { mutableStateOf(profile.genderMode) }
+    var religion by remember { mutableStateOf(profile.religion) }
+    var country by remember { mutableStateOf(profile.country ?: "") }
+    var region by remember { mutableStateOf(profile.region ?: "") }
+    var city by remember { mutableStateOf(profile.city ?: "") }
+
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+                    Text("Edit Profile", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+                }
+                Button(onClick = {
+                    viewModel.updateProfileIdentity(displayName, pronoun, customPronoun.ifBlank { null }, genderMode, religion, country.ifBlank { null }, region.ifBlank { null }, city.ifBlank { null }, profile.behaviourFocuses)
+                    onBack()
+                }) { Text("Save") }
+            }
+        }
+        item { OutlinedTextField(value = displayName, onValueChange = { displayName = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
+        item {
+            OnboardingOptionGroup(
+                label = "Pronouns",
+                options = mapOf("SHE_HER" to "She/Her", "HE_HIM" to "He/Him", "THEY_THEM" to "They/Them", "CUSTOM" to "Custom", "PREFER_NOT_TO_SAY" to "Prefer not to say"),
+                selected = pronoun, onSelect = { pronoun = it }
+            )
+            if (pronoun == "CUSTOM") {
+                OutlinedTextField(value = customPronoun, onValueChange = { customPronoun = it }, label = { Text("Your pronouns") }, modifier = Modifier.fillMaxWidth())
+            }
+        }
+        item {
+            OutlinedTextField(value = country, onValueChange = { country = it }, label = { Text("Country (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            OutlinedTextField(value = region, onValueChange = { region = it }, label = { Text("Region / State (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            OutlinedTextField(value = city, onValueChange = { city = it }, label = { Text("City (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+        }
+    }
+}
+
+// ==========================================
+// SUPPORT MODE TAB
+// ==========================================
+
+@Composable
+fun SupportModeTab(profile: Profile) {
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item {
+            Text("Support Mode", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+            Text("Learning how to be a caring, respectful supporter", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+        }
+        item {
+            Surface(color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f), shape = RoundedCornerShape(16.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.VolunteerActivism, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(28.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Supporting with Care", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    listOf(
+                        "Ask how you can help — don't assume",
+                        "Listen without judgment or advice unless asked",
+                        "Respect privacy — never share their health information",
+                        "Learn about PMS, PCOS, and period experiences",
+                        "Offer practical support: warmth, rest, food",
+                        "Never dismiss or minimise their pain",
+                        "Encourage professional care if symptoms are severe"
+                    ).forEach { tip ->
+                        Row(modifier = Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.Top) {
+                            Icon(Icons.Default.Favorite, null, tint = MutedRosePrimary, modifier = Modifier.size(14.dp).padding(top = 2.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(tip, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Surface(color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f))) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Privacy Reminder", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                    Text("Do not track another person's period, mood, symptoms, or location without their clear and ongoing consent. Support is built on trust and respect.",
+                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// SETTINGS TAB
+// ==========================================
+
+@Composable
+fun SettingsTab(profile: Profile, viewModel: LunaViewModel, onBack: () -> Unit) {
     var cycleLengthStr by remember { mutableStateOf(profile.averageCycleLength.toString()) }
     var periodLengthStr by remember { mutableStateOf(profile.averagePeriodLength.toString()) }
-
-    var displayNameStr by remember { mutableStateOf(profile.displayName ?: "") }
-    var birthYearStr by remember { mutableStateOf(profile.birthYear?.toString() ?: "") }
-    var genderModeSelected by remember { mutableStateOf(profile.genderMode) }
-    var userModeSelected by remember { mutableStateOf(profile.userMode) }
-
     var periodReminders by remember { mutableStateOf(profile.periodReminders) }
     var moodReminders by remember { mutableStateOf(profile.moodReminders) }
     var selfCareReminders by remember { mutableStateOf(profile.selfCareReminders) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Text(
-            text = "Settings",
-            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
-        )
-
-        // Theme Toggle Section
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier
-                    .fillModifier()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text("Dark Mode Theme", fontWeight = FontWeight.Bold)
-                    Text("Toggle deep plum color themes", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-                }
-                Switch(
-                    checked = profile.isDarkMode,
-                    onCheckedChange = { viewModel.toggleDarkMode(it) }
-                )
-            }
-        }
-
-        // Profile configurations
-        Card(modifier = Modifier.fillMaxWidth().testTag("profile_card")) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Personal Profile 👤", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
-                
-                OutlinedTextField(
-                    value = displayNameStr,
-                    onValueChange = { displayNameStr = it },
-                    label = { Text("Display Name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = birthYearStr,
-                    onValueChange = { birthYearStr = it },
-                    label = { Text("Year of Birth") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Text("Gender identity:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    listOf("FEMALE", "MALE", "NON_BINARY").forEach { g ->
-                        val isSel = genderModeSelected == g
-                        val label = when (g) {
-                            "FEMALE" -> "Female"
-                            "MALE" -> "Male"
-                            else -> "Non-Binary"
-                        }
-                        Button(
-                            onClick = { genderModeSelected = g },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                                contentColor = if (isSel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                            ),
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)
-                        ) {
-                            Text(label, fontSize = 11.sp)
-                        }
-                    }
-                }
-
-                Text("App Companion Mode:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    listOf("SELF_TRACKING", "SUPPORT_MODE", "EDUCATION_ONLY").forEach { mode ->
-                        val isSel = userModeSelected == mode
-                        val label = when (mode) {
-                            "SELF_TRACKING" -> "Self"
-                            "SUPPORT_MODE" -> "Support"
-                            else -> "Edu Only"
-                        }
-                        Button(
-                            onClick = { userModeSelected = mode },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isSel) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceVariant,
-                                contentColor = if (isSel) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurfaceVariant
-                            ),
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)
-                        ) {
-                            Text(label, fontSize = 11.sp)
-                        }
-                    }
-                }
-
-                Button(
-                    onClick = {
-                        val year = birthYearStr.toIntOrNull()
-                        viewModel.updateProfile(
-                            displayName = displayNameStr,
-                            birthYear = year,
-                            genderMode = genderModeSelected,
-                            userMode = userModeSelected
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth().testTag("save_profile_button")
-                ) {
-                    Text("Save Profile Changes")
-                }
-            }
-        }
-
-        // Subscription configurations
-        Card(
-            modifier = Modifier.fillMaxWidth().testTag("subscription_card"),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.25f))
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item {
+            if (onBack != {}) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Star, null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("LunaCare Pro Subscription ⭐", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+                    Text("Settings", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
                 }
-                Text(
-                    text = "Unlock deeper cycle projections, detailed medical history exports, secure backup, and advanced partner tracking companion widgets.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Current Tier: Free Plan", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                            Text("No active payment details on file.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Button(
-                            onClick = {
-                                android.widget.Toast.makeText(context, "Pro features simulated successfully!", android.widget.Toast.LENGTH_SHORT).show()
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                        ) {
-                            Text("Activate Pro Trial", fontSize = 11.sp)
-                        }
+            } else {
+                Text("Settings", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+            }
+        }
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column {
+                        Text("Dark Mode", fontWeight = FontWeight.Bold)
+                        Text("Toggle deep plum dark theme", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                    }
+                    Switch(checked = profile.isDarkMode, onCheckedChange = { viewModel.toggleDarkMode(it) })
+                }
+            }
+        }
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Cycle Settings", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                    OutlinedTextField(value = cycleLengthStr, onValueChange = { cycleLengthStr = it }, label = { Text("Avg Cycle Length (days)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = periodLengthStr, onValueChange = { periodLengthStr = it }, label = { Text("Avg Period Length (days)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    Button(onClick = { viewModel.updateCycleSettings(cycleLengthStr.toIntOrNull() ?: 28, periodLengthStr.toIntOrNull() ?: 5) }, modifier = Modifier.fillMaxWidth()) { Text("Save Cycle Settings") }
+                }
+            }
+        }
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Reminders", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                    SettingSwitch("Period predictions", periodReminders) { periodReminders = it; viewModel.updateNotificationPreferences(it, moodReminders, false, selfCareReminders, "20:00") }
+                    SettingSwitch("Daily wellbeing check-in", moodReminders) { moodReminders = it; viewModel.updateNotificationPreferences(periodReminders, it, false, selfCareReminders, "20:00") }
+                    SettingSwitch("Gentle self-care tips", selfCareReminders) { selfCareReminders = it; viewModel.updateNotificationPreferences(periodReminders, moodReminders, false, it, "20:00") }
+                }
+            }
+        }
+        item {
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f))) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Data & Privacy", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error))
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))) {
+                        Text(LunaContent.GLOBAL_DISCLAIMER, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
+                    }
+                    Button(onClick = { viewModel.clearAllUserData() }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
+                        Icon(Icons.Default.DeleteForever, null); Spacer(modifier = Modifier.width(8.dp)); Text("Delete All Data & Reset")
                     }
                 }
             }
         }
-
-        // Cycle configurations
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Cycle Parameters", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-
-                OutlinedTextField(
-                    value = cycleLengthStr,
-                    onValueChange = { cycleLengthStr = it },
-                    label = { Text("Average Cycle Length (Days)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = periodLengthStr,
-                    onValueChange = { periodLengthStr = it },
-                    label = { Text("Average Period Length (Days)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Button(
-                    onClick = {
-                        val cLen = cycleLengthStr.toIntOrNull() ?: 28
-                        val pLen = periodLengthStr.toIntOrNull() ?: 5
-                        viewModel.updateCycleSettings(cLen, pLen)
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Save Parameters")
-                }
+        item {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+                Text("LunaCare v2.0.0 · Educational Support Only", style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f))
+                Text("Not medical advice • Not a substitute for professional care", style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f))
             }
-        }
-
-        // Notification configurations
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Reminders & Notifications", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Period prediction reminders", fontSize = 14.sp)
-                    Switch(checked = periodReminders, onCheckedChange = {
-                        periodReminders = it
-                        viewModel.updateNotificationPreferences(it, moodReminders, false, selfCareReminders, "20:00")
-                    })
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Daily wellbeing check-in", fontSize = 14.sp)
-                    Switch(checked = moodReminders, onCheckedChange = {
-                        moodReminders = it
-                        viewModel.updateNotificationPreferences(periodReminders, it, false, selfCareReminders, "20:00")
-                    })
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Gentle self-care tips", fontSize = 14.sp)
-                    Switch(checked = selfCareReminders, onCheckedChange = {
-                        selfCareReminders = it
-                        viewModel.updateNotificationPreferences(periodReminders, moodReminders, false, it, "20:00")
-                    })
-                }
-            }
-        }
-
-        // SEO & Mobile Discovery Options
-        var appIndexingEnabled by remember { mutableStateOf(true) }
-        var publicGuidesSearchable by remember { mutableStateOf(true) }
-
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("SEO & Web-to-App Discovery 🔍", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                Text(
-                    text = "Configure how public, non-personal educational segments like Menstrual Cup guides or PCOS/PCOD articles are indexed by Google Search and web crawlers.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(0.8f)) {
-                        Text("Google App Indexing", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                        Text("Allow Google Search web crawls to link directly into public app guides.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Switch(checked = appIndexingEnabled, onCheckedChange = { appIndexingEnabled = it })
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(0.8f)) {
-                        Text("Index Bookmarks", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                        Text("Contribute anonymous product popularity scores to improve regional SEO health tags.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Switch(checked = publicGuidesSearchable, onCheckedChange = { publicGuidesSearchable = it })
-                }
-
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Verified Domains for Deep Linking:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                    Text("• https://lunacare.com/learn/* (Educational/PMS Guides)", fontSize = 11.sp)
-                    Text("• https://lunacare.com/care/* (Care Product Discovery)", fontSize = 11.sp)
-                    Text("• https://lunacare.com/cup-education/* (Cup Cleaning Guidelines)", fontSize = 11.sp)
-                }
-            }
-        }
-
-        // Navigation Auto-Tracking UI
-        Card(modifier = Modifier.fillMaxWidth().testTag("auto_tracking_card")) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(0.8f)) {
-                        Text("Auto Navigation Tracking", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                        Text(
-                            text = "Locally and privately log your navigation journey to help optimize application speed and user experience flow.",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = isAutoTrackingEnabled,
-                        onCheckedChange = { viewModel.setAutoTrackingEnabled(it) },
-                        modifier = Modifier.testTag("auto_tracking_switch")
-                    )
-                }
-
-                if (isAutoTrackingEnabled) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                    
-                    Text(
-                        text = "Tracked Navigation Journey (${navigationHistory.size} events):",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-
-                    if (navigationHistory.isEmpty()) {
-                        Text(
-                            text = "No navigation events tracked yet. Switch tabs to record history.",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        )
-                    } else {
-                        // Display the timeline elegantly
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 150.dp)
-                                .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            navigationHistory.takeLast(10).reversed().forEach { track ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.History,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Text(
-                                            text = track.tabName,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    }
-                                    
-                                    val formattedTime = java.time.Instant.ofEpochMilli(track.timestamp)
-                                        .atZone(java.time.ZoneId.systemDefault())
-                                        .toLocalTime()
-                                        .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"))
-                                    
-                                    Text(
-                                        text = formattedTime,
-                                        fontSize = 10.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                    )
-                                }
-                            }
-                        }
-
-                        Button(
-                            onClick = { viewModel.clearNavigationHistory() },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(36.dp)
-                                .testTag("clear_navigation_history_btn"),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f),
-                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                            ),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("Clear Tracked Journey", fontSize = 11.sp)
-                        }
-                    }
-                }
-            }
-        }
-
-        // Account Session & Security Audit Log Card
-        val securityEvents by viewModel.securityEvents.collectAsState()
-        val loggedInCreds by viewModel.loggedInCredentials.collectAsState()
-        val isGuest by viewModel.isGuestUser.collectAsState()
-
-        Card(
-            modifier = Modifier.fillMaxWidth().testTag("session_security_card")
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Account Session & Security Audit 🛡️", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(0.7f)) {
-                        val accountText = if (isGuest) {
-                            "Guest Mode (Offline Only)"
-                        } else if (loggedInCreds != null) {
-                            val plainEmail = EncryptionHelper.decryptSensitiveText(loggedInCreds?.encryptedEmail) ?: ""
-                            "Logged in as ${EncryptionHelper.maskEmail(plainEmail)}"
-                        } else {
-                            "Not Authenticated"
-                        }
-                        Text(accountText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-                        Text("Your active session state.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    
-                    Button(
-                        onClick = { viewModel.logout() },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.error),
-                        modifier = Modifier.testTag("logout_button")
-                    ) {
-                        Icon(Icons.Default.ExitToApp, contentDescription = "Logout")
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Logout", fontSize = 12.sp)
-                    }
-                }
-
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-
-                Text("Recent Security Audit Events:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-
-                if (securityEvents.isEmpty()) {
-                    Text("No security events logged yet.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
-                } else {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 120.dp)
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        securityEvents.forEach { event ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.Top
-                            ) {
-                                Column(modifier = Modifier.weight(0.7f)) {
-                                    Text(
-                                        text = event.eventType,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = when(event.eventType) {
-                                            "LOGIN_SUCCESS", "PASSWORD_RESET_SUCCESS" -> Color(0xFF2E7D32)
-                                            "LOGIN_FAILED", "ACCOUNT_LOCKED_TEMPORARILY", "RATE_LIMIT_TRIGGERED" -> MaterialTheme.colorScheme.error
-                                            else -> MaterialTheme.colorScheme.secondary
-                                        }
-                                    )
-                                    Text(
-                                        text = event.metadata ?: "",
-                                        fontSize = 10.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                val eventTime = java.time.Instant.ofEpochMilli(event.createdAt)
-                                    .atZone(java.time.ZoneId.systemDefault())
-                                    .toLocalTime()
-                                    .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
-                                Text(
-                                    text = eventTime,
-                                    fontSize = 10.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Data Self-Sovereignty and Privacy
-        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.1f))) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Self-Sovereignty & Security", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error))
-
-                val periodLogs by viewModel.periodLogs.collectAsState()
-                val moodLogs by viewModel.moodLogs.collectAsState()
-                val journalEntries by viewModel.journalEntries.collectAsState()
-
-                Button(
-                    onClick = {
-                        val summary = com.example.util.ExportUtil.generateHealthLogsSummary(
-                            profile = profile,
-                            periodLogs = periodLogs,
-                            moodLogs = moodLogs,
-                            journalEntries = journalEntries
-                        )
-                        val sendIntent: android.content.Intent = android.content.Intent().apply {
-                            action = android.content.Intent.ACTION_SEND
-                            putExtra(android.content.Intent.EXTRA_TEXT, summary)
-                            type = "text/plain"
-                        }
-                        val shareIntent = android.content.Intent.createChooser(sendIntent, "Export Health Logs")
-                        context.startActivity(shareIntent)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.secondary)
-                ) {
-                    Icon(Icons.Default.Download, null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Export Health Logs (Text Summary)")
-                }
-
-                Button(
-                    onClick = {
-                        viewModel.clearAllUserData()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Icon(Icons.Default.DeleteForever, null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Delete All Local Content")
-                }
-            }
-        }
-
-        // Technical specs & disclaimers
-        Column(
-            modifier = Modifier.padding(vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = "LunaCare v1.0.0 (Offline Native MVP)\nCopyright © 2026",
-                style = MaterialTheme.typography.bodySmall,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
-            )
         }
     }
 }
 
-// Utility extension for filling modifier safely without custom size issues
+@Composable
+private fun SettingSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+// Utility extension
 fun Modifier.fillModifier(): Modifier = this.fillMaxWidth()
-
-// ==========================================
-// TAB 6: SUPPORT TAB (For Supporters & Partners)
-// ==========================================
-@Composable
-fun SupportTab(profile: Profile, viewModel: LunaViewModel) {
-    val scrollState = rememberScrollState()
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(scrollState),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // Hero Header
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(24.dp))
-                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))
-                .padding(20.dp)
-        ) {
-            Column {
-                Text(
-                    text = "Welcome, Supporter Mode 🌟",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "You are supporting your ${profile.supportRelationship?.replace("_", " ")?.lowercase() ?: "partner"}. Here are safe, vetted ways to offer care, understand cycle symptoms, and buy products.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        // Section 1: Cycle Basics Quick-Card
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("The Cycle at a Glance 🩸", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "A menstrual cycle typically lasts 21 to 45 days. It is divided into 4 phases: Menstruation (Bleeding), Follicular (Building), Ovulation (Highest energy), and Luteal (Pre-period / potential PMS).\n\nIf she experiences mood fluctuations during the Luteal phase, remember it is heavily biological. Gentle patient support, back rubs, and keeping dynamic expectations helper can ease comfort tremendously.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        // Section 2: Product Buying Guide (Menstrual Cup & pads specs)
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Menstrual Care Shopping Guide 🛒", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "If asked to buy pads, tampons, or a menstrual cup, here is what to look for:",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "• Reusable Menstrual Cups: Look for 100% Medical Grade Silicone (FDA compliant), BPA-free, and hypoallergenic. Sizing is usually Size A (Pre-childbirth) or Size B (Post-childbirth).\n" +
-                           "• Sanitary Pads: Select unscented, dye-free, organic cotton top-sheet options. This prevents sensitive irritation during high bleeding.\n" +
-                           "• Heating Pads: Hot water bags or air-activated waist patches provide substantial period cramp (dysmenorrhea) relief.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        // Section 3: Comfort Care Checklists
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("How Can I Care For Her Today? 🌱", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                
-                listOf(
-                    "🍫 Comfort Food: Bring dark chocolate, magnesium-rich almonds, or warm ginger tea (helps ease cramps).",
-                    "💧 Hydration: Keep her water bottle filled; hydration is critical to flush bloating water retention.",
-                    "🛁 Warm Bath / Heating Pad: Pre-heat a heating pad or offer a warm gel patch for her back/lower tummy.",
-                    "🧘 Focus Relief: Reduce loaded schedules or offer chores support so she can rest in the first two heavier days."
-                ).forEach { item ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Text(text = "•", fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 8.dp))
-                        Text(text = item, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-        }
-
-        // Section 4: Emergency Signs
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f))
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Emergency Red Flags 🚨", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.error)
-                }
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "If she exhibits any of these symptoms, do not wait. Assist her to see a medical professional immediately:\n" +
-                           "• Extremely severe pain that doesn't resolve with pain medicines.\n" +
-                           "• Heavy bleeding soaking through 1+ pads or tampons every hour for 2+ consecutive hours.\n" +
-                           "• A sudden high fever, rash, vomiting, or dizziness when using a menstrual cup or tampon (toxic shock flags).\n" +
-                           "• Signs of infection (bad odor, pelvic swelling, acute pain).",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer
-                )
-            }
-        }
-    }
-}
-
-// ==========================================
-// TAB 7: CARE TAB (Nearby Locator & Shopping Specs)
-// ==========================================
-@Composable
-fun CareTab(profile: Profile, viewModel: LunaViewModel) {
-    val scrollState = rememberScrollState()
-    val context = androidx.compose.ui.platform.LocalContext.current
-
-    var locationInput by remember { mutableStateOf("") }
-    var suggestedClinic by remember { mutableStateOf("") }
-    var gpsSimulated by remember { mutableStateOf(false) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(scrollState),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // Header
-        Text(
-            text = "Care & Nearby Help Locator 🏥",
-            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.primary
-        )
-        Text(
-            text = "Find pharmacies, clinics, and emergency health services. Use our secure Google Maps redirection to seek immediate treatment.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
-        // GPS Simulator
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f))
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("GPS Location Simulator", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                Text(
-                    text = "Simulate coordinates detection to find medical care safely without requiring sensitive persistent permissions.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                
-                Button(
-                    onClick = {
-                        gpsSimulated = true
-                        locationInput = "Main Street Medical Clinic Area"
-                        suggestedClinic = "Oakridge Hills Gynecology Center (0.8 mi away)"
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Auto-Detect Location (Simulated GPS)")
-                }
-
-                if (gpsSimulated) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text("📍 Location Detected: $locationInput", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text("🏥 Recommended: $suggestedClinic", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            TextButton(
-                                onClick = {
-                                    gpsSimulated = false
-                                    locationInput = ""
-                                    suggestedClinic = ""
-                                },
-                                modifier = Modifier.align(Alignment.End).testTag("clear_location_btn")
-                            ) {
-                                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Clear Temporary Location", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Custom Search Input
-        OutlinedTextField(
-            value = locationInput,
-            onValueChange = { locationInput = it },
-            label = { Text("Search location or city...") },
-            placeholder = { Text("E.g., Cincinnati, OH") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        // Redirection Buttons
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = {
-                    val query = if (locationInput.isNotBlank()) "pharmacy near $locationInput" else "pharmacy nearby"
-                    val url = CycleUtils.buildGoogleMapsSearchUrl(query)
-                    try {
-                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
-                        context.startActivity(intent)
-                    } catch (e: Exception) {
-                        // Safe fallback log
-                        println("DEBUG: Google Maps browser trigger: $url")
-                    }
-                },
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Search Pharmacy 💊", fontSize = 12.sp)
-            }
-
-            Button(
-                onClick = {
-                    val query = if (locationInput.isNotBlank()) "gynecologist hospital near $locationInput" else "gynecologist hospital nearby"
-                    val url = CycleUtils.buildGoogleMapsSearchUrl(query)
-                    try {
-                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
-                        context.startActivity(intent)
-                    } catch (e: Exception) {
-                        println("DEBUG: Google Maps browser trigger: $url")
-                    }
-                },
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Search Clinic 🏥", fontSize = 12.sp)
-            }
-        }
-
-        // Safety Specs specifications
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Product Quality Specs (Consumer Council) 🔍", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
-                Text(
-                    text = "Ensure maximum vaginal safety. Always confirm packages follow the strict standards:",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "• Chlorine-free bleaching process (look for ECF or TCF labels to prevent dioxin ingestion).\n" +
-                           "• Unscented with absolutely zero artificial perfumes (reduces vaginosis risks).\n" +
-                           "• Sterilizer-safe silicone (for cups) allowing boiling treatment for 5-10 minutes between bleeding cycles.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
-

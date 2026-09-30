@@ -1,6 +1,1 @@
-{
-  "name": "LunaCare",
-  "description": "LunaCare is a supportive, private wellness companion for period tracking, emotional health journaling, and menstrual cup education.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
+{"name":"LunaCare","description":"LunaCare is a supportive, private wellness companion for period tracking, emotional health journaling, and menstrual cup education.","requestFramePermissions":[],"majorCapabilities":["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]}

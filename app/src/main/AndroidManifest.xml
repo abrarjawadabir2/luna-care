@@ -2,6 +2,20 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Location: Only requested when user taps "Find Nearby". Never background, never auto-on-launch. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- Camera: Only requested when user taps camera icon in medical journal (optional). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Microphone: Only requested when user taps microphone in AI chat (optional). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Notifications: For medicine, period, mood, and cup reminders. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -18,23 +32,7 @@
             android:theme="@style/Theme.MyApplication">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-
-            <!-- App Indexing & SEO Deep Link Support -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="http" />
-                <data android:scheme="https" />
-                <data android:host="lunacare.com" />
-                <data android:host="www.lunacare.com" />
-                <data android:pathPrefix="/learn" />
-                <data android:pathPrefix="/care" />
-                <data android:pathPrefix="/awareness" />
-                <data android:pathPrefix="/cup-education" />
             </intent-filter>
         </activity>
     </application>

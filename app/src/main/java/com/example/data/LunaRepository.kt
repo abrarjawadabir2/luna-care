@@ -1,239 +1,95 @@
 package com.example.data
 
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 
 class LunaRepository(private val db: LunaDatabase) {
     private val profileDao = db.profileDao()
     private val periodLogDao = db.periodLogDao()
-    private val moodLogDao = db.moodLogDao()
-    private val journalEntryDao = db.journalEntryDao()
-    private val bookmarkDao = db.bookmarkDao()
-    private val medicalJournalEntryDao = db.medicalJournalEntryDao()
-    private val medicalReminderDao = db.medicalReminderDao()
     private val behaviourLogDao = db.behaviourLogDao()
+    private val moodLogDao = db.moodLogDao()
+    private val medicalJournalDao = db.medicalJournalDao()
+    private val journalEntryDao = db.journalEntryDao()
+    private val medicalReminderDao = db.medicalReminderDao()
     private val cupCareLogDao = db.cupCareLogDao()
-    private val supportNoteDao = db.supportNoteDao()
-    private val symptomLogDao = db.symptomLogDao()
-    private val userCredentialsDao = db.userCredentialsDao()
-    private val loginSecurityEventDao = db.loginSecurityEventDao()
-    private val accountSecurityStateDao = db.accountSecurityStateDao()
+    private val inAppNotificationDao = db.inAppNotificationDao()
+    private val auditLogDao = db.auditLogDao()
+    private val bookmarkDao = db.bookmarkDao()
 
+    // --- Profile ---
     val profile: Flow<Profile?> = profileDao.getProfile()
-
-    val periodLogs: Flow<List<PeriodLog>> = periodLogDao.getAllPeriodLogs().map { list ->
-        list.map { log ->
-            log.copy(notes = log.notes?.let { EncryptionHelper.decryptSensitiveText(it) })
-        }
-    }
-
-    val moodLogs: Flow<List<MoodLog>> = moodLogDao.getAllMoodLogs().map { list ->
-        list.map { log ->
-            log.copy(notes = log.notes?.let { EncryptionHelper.decryptSensitiveText(it) })
-        }
-    }
-
-    val journalEntries: Flow<List<JournalEntry>> = journalEntryDao.getAllJournalEntries().map { list ->
-        list.map { entry ->
-            entry.copy(body = EncryptionHelper.decryptSensitiveText(entry.body) ?: "")
-        }
-    }
-
-    val bookmarks: Flow<List<Bookmark>> = bookmarkDao.getAllBookmarks()
-
-    val medicalJournalEntries: Flow<List<MedicalJournalEntry>> = medicalJournalEntryDao.getAllEntries().map { list ->
-        list.map { entry ->
-            entry.copy(
-                notes = EncryptionHelper.decryptSensitiveText(entry.notes) ?: "",
-                doctorAdvice = entry.doctorAdvice?.let { EncryptionHelper.decryptSensitiveText(it) },
-                medicinesTaken = EncryptionHelper.decryptSensitiveText(entry.medicinesTaken) ?: ""
-            )
-        }
-    }
-
-    val medicalReminders: Flow<List<MedicalReminder>> = medicalReminderDao.getAllReminders().map { list ->
-        list.map { reminder ->
-            reminder.copy(notes = reminder.notes?.let { EncryptionHelper.decryptSensitiveText(it) })
-        }
-    }
-
-    val behaviourLogs: Flow<List<BehaviourLog>> = behaviourLogDao.getAllBehaviourLogs().map { list ->
-        list.map { log ->
-            log.copy(notes = log.notes?.let { EncryptionHelper.decryptSensitiveText(it) })
-        }
-    }
-
-    val cupCareLogs: Flow<List<CupCareLog>> = cupCareLogDao.getAllCupCareLogs().map { list ->
-        list.map { log ->
-            log.copy(notes = log.notes?.let { EncryptionHelper.decryptSensitiveText(it) })
-        }
-    }
-
-    val supportNotes: Flow<List<SupportNote>> = supportNoteDao.getAllSupportNotes().map { list ->
-        list.map { note ->
-            note.copy(noteBody = EncryptionHelper.decryptSensitiveText(note.noteBody) ?: "")
-        }
-    }
-
-    val symptomLogs: Flow<List<SymptomLog>> = symptomLogDao.getAllSymptomLogs().map { list ->
-        list.map { log ->
-            log.copy(notes = log.notes?.let { EncryptionHelper.decryptSensitiveText(it) })
-        }
-    }
-
-    // New Session & Credentials Flows / Methods
-    val loggedInCredentialsFlow: Flow<UserCredentials?> = userCredentialsDao.getLoggedInCredentialsFlow()
-
-    suspend fun getCredentialsByHash(emailHash: String): UserCredentials? {
-        return userCredentialsDao.getCredentialsByHash(emailHash)
-    }
-
-    suspend fun getLoggedInCredentialsSync(): UserCredentials? {
-        return userCredentialsDao.getLoggedInCredentialsSync()
-    }
-
-    suspend fun insertCredentials(credentials: UserCredentials) {
-        userCredentialsDao.insertCredentials(credentials)
-    }
-
-    suspend fun loginUser(emailHash: String) {
-        userCredentialsDao.logoutAll() // enforce single logged in user session locally
-        userCredentialsDao.loginUser(emailHash)
-    }
-
-    suspend fun logoutAll() {
-        userCredentialsDao.logoutAll()
-    }
-
-    suspend fun deleteAllCredentials() {
-        userCredentialsDao.deleteAllCredentials()
-    }
-
-    // Security events
-    val securityEventsFlow: Flow<List<LoginSecurityEvent>> = loginSecurityEventDao.getAllSecurityEvents()
-
-    suspend fun insertSecurityEvent(event: LoginSecurityEvent) {
-        loginSecurityEventDao.insertSecurityEvent(event)
-    }
-
-    // Account security state
-    suspend fun getSecurityState(emailHash: String): AccountSecurityState? {
-        return accountSecurityStateDao.getSecurityState(emailHash)
-    }
-
-    suspend fun insertSecurityState(state: AccountSecurityState) {
-        accountSecurityStateDao.insertSecurityState(state)
-    }
-
-    suspend fun deleteSecurityState(emailHash: String) {
-        accountSecurityStateDao.deleteSecurityState(emailHash)
-    }
-
     suspend fun getProfileSync(): Profile? = profileDao.getProfileSync()
+    suspend fun saveProfile(profile: Profile) = profileDao.insertProfile(profile)
 
-    suspend fun saveProfile(profile: Profile) {
-        profileDao.insertProfile(profile)
-    }
+    // --- Period Logs ---
+    val periodLogs: Flow<List<PeriodLog>> = periodLogDao.getAllPeriodLogs()
+    suspend fun insertPeriodLog(log: PeriodLog) = periodLogDao.insertPeriodLog(log)
+    suspend fun deletePeriodLog(id: Int) = periodLogDao.deletePeriodLog(id)
+    suspend fun getPeriodLogById(id: Int): PeriodLog? = periodLogDao.getPeriodLogById(id)
 
-    suspend fun insertPeriodLog(log: PeriodLog) {
-        val encryptedLog = log.copy(notes = log.notes?.let { EncryptionHelper.encryptSensitiveText(it) })
-        periodLogDao.insertPeriodLog(encryptedLog)
-    }
+    // --- Behaviour Logs (new full check-in) ---
+    val behaviourLogs: Flow<List<BehaviourLog>> = behaviourLogDao.getAllBehaviourLogs()
+    val crisisLogs: Flow<List<BehaviourLog>> = behaviourLogDao.getCrisisLogs()
+    suspend fun insertBehaviourLog(log: BehaviourLog) = behaviourLogDao.insertBehaviourLog(log)
+    suspend fun deleteBehaviourLog(id: Int) = behaviourLogDao.deleteBehaviourLog(id)
+    suspend fun getBehaviourLogByDate(date: String): BehaviourLog? =
+        behaviourLogDao.getBehaviourLogByDate(date)
 
-    suspend fun deletePeriodLog(id: Int) {
-        periodLogDao.deletePeriodLog(id)
-    }
+    // --- Mood Logs (legacy) ---
+    val moodLogs: Flow<List<MoodLog>> = moodLogDao.getAllMoodLogs()
+    suspend fun insertMoodLog(log: MoodLog) = moodLogDao.insertMoodLog(log)
+    suspend fun deleteMoodLog(id: Int) = moodLogDao.deleteMoodLog(id)
 
-    suspend fun getPeriodLogById(id: Int): PeriodLog? {
-        val raw = periodLogDao.getPeriodLogById(id) ?: return null
-        return raw.copy(notes = raw.notes?.let { EncryptionHelper.decryptSensitiveText(it) })
-    }
+    // --- Medical Journal ---
+    val medicalJournalEntries: Flow<List<MedicalJournalEntry>> = medicalJournalDao.getAllEntries()
+    suspend fun insertMedicalJournalEntry(entry: MedicalJournalEntry) =
+        medicalJournalDao.insertEntry(entry)
+    suspend fun updateMedicalJournalEntry(entry: MedicalJournalEntry) =
+        medicalJournalDao.updateEntry(entry)
+    suspend fun deleteMedicalJournalEntry(id: Int) = medicalJournalDao.deleteEntry(id)
+    suspend fun getMedicalJournalEntryById(id: Int): MedicalJournalEntry? =
+        medicalJournalDao.getEntryById(id)
 
-    suspend fun insertMoodLog(log: MoodLog) {
-        val encryptedLog = log.copy(notes = log.notes?.let { EncryptionHelper.encryptSensitiveText(it) })
-        moodLogDao.insertMoodLog(encryptedLog)
-    }
+    // --- Legacy Journal Entries ---
+    val journalEntries: Flow<List<JournalEntry>> = journalEntryDao.getAllJournalEntries()
+    suspend fun insertJournalEntry(entry: JournalEntry) = journalEntryDao.insertJournalEntry(entry)
+    suspend fun deleteJournalEntry(id: Int) = journalEntryDao.deleteJournalEntry(id)
 
-    suspend fun deleteMoodLog(id: Int) {
-        moodLogDao.deleteMoodLog(id)
-    }
+    // --- Medicine Reminders ---
+    val medicalReminders: Flow<List<MedicalReminder>> = medicalReminderDao.getAllReminders()
+    val activeReminders: Flow<List<MedicalReminder>> = medicalReminderDao.getActiveReminders()
+    suspend fun insertMedicalReminder(reminder: MedicalReminder) =
+        medicalReminderDao.insertReminder(reminder)
+    suspend fun updateMedicalReminder(reminder: MedicalReminder) =
+        medicalReminderDao.updateReminder(reminder)
+    suspend fun deleteMedicalReminder(id: Int) = medicalReminderDao.deleteReminder(id)
 
-    suspend fun insertJournalEntry(entry: JournalEntry) {
-        val encrypted = entry.copy(body = EncryptionHelper.encryptSensitiveText(entry.body) ?: "")
-        journalEntryDao.insertJournalEntry(encrypted)
-    }
+    // --- Cup Care Logs ---
+    val cupCareLogs: Flow<List<CupCareLog>> = cupCareLogDao.getAllCupCareLogs()
+    suspend fun insertCupCareLog(log: CupCareLog) = cupCareLogDao.insertCupCareLog(log)
+    suspend fun deleteCupCareLog(id: Int) = cupCareLogDao.deleteCupCareLog(id)
+    suspend fun getCupCareLogByDate(date: String): CupCareLog? =
+        cupCareLogDao.getCupCareLogByDate(date)
 
-    suspend fun deleteJournalEntry(id: Int) {
-        journalEntryDao.deleteJournalEntry(id)
-    }
+    // --- In-App Notifications ---
+    val inAppNotifications: Flow<List<InAppNotification>> =
+        inAppNotificationDao.getAllNotifications()
+    val unreadNotificationCount: Flow<Int> = inAppNotificationDao.getUnreadCount()
+    suspend fun insertNotification(notification: InAppNotification) =
+        inAppNotificationDao.insertNotification(notification)
+    suspend fun markNotificationRead(id: Int) = inAppNotificationDao.markAsRead(id)
+    suspend fun markAllNotificationsRead() = inAppNotificationDao.markAllAsRead()
+    suspend fun deleteNotification(id: Int) = inAppNotificationDao.deleteNotification(id)
 
-    suspend fun insertMedicalJournalEntry(entry: MedicalJournalEntry) {
-        val encrypted = entry.copy(
-            notes = EncryptionHelper.encryptSensitiveText(entry.notes) ?: "",
-            doctorAdvice = entry.doctorAdvice?.let { EncryptionHelper.encryptSensitiveText(it) },
-            medicinesTaken = EncryptionHelper.encryptSensitiveText(entry.medicinesTaken) ?: ""
-        )
-        medicalJournalEntryDao.insertEntry(encrypted)
-    }
+    // --- Audit Logs (append-only) ---
+    val recentAuditLogs: Flow<List<AuditLog>> = auditLogDao.getRecentAuditLogs()
+    val highRiskAuditLogs: Flow<List<AuditLog>> = auditLogDao.getHighRiskLogs()
+    suspend fun insertAuditLog(log: AuditLog) = auditLogDao.insertAuditLog(log)
 
-    suspend fun deleteMedicalJournalEntry(id: Int) {
-        medicalJournalEntryDao.deleteEntry(id)
-    }
+    // --- Bookmarks ---
+    val bookmarks: Flow<List<Bookmark>> = bookmarkDao.getAllBookmarks()
+    suspend fun addBookmark(slug: String) = bookmarkDao.insertBookmark(Bookmark(articleSlug = slug))
+    suspend fun removeBookmark(slug: String) = bookmarkDao.deleteBookmarkBySlug(slug)
 
-    suspend fun insertMedicalReminder(reminder: MedicalReminder) {
-        val encrypted = reminder.copy(notes = reminder.notes?.let { EncryptionHelper.encryptSensitiveText(it) })
-        medicalReminderDao.insertReminder(encrypted)
-    }
-
-    suspend fun deleteMedicalReminder(id: Int) {
-        medicalReminderDao.deleteReminder(id)
-    }
-
-    suspend fun addBookmark(slug: String) {
-        bookmarkDao.insertBookmark(Bookmark(articleSlug = slug))
-    }
-
-    suspend fun removeBookmark(slug: String) {
-        bookmarkDao.deleteBookmarkBySlug(slug)
-    }
-
-    suspend fun insertBehaviourLog(log: BehaviourLog) {
-        val encrypted = log.copy(notes = log.notes?.let { EncryptionHelper.encryptSensitiveText(it) })
-        behaviourLogDao.insertBehaviourLog(encrypted)
-    }
-
-    suspend fun deleteBehaviourLog(id: Int) {
-        behaviourLogDao.deleteBehaviourLog(id)
-    }
-
-    suspend fun insertCupCareLog(log: CupCareLog) {
-        val encrypted = log.copy(notes = log.notes?.let { EncryptionHelper.encryptSensitiveText(it) })
-        cupCareLogDao.insertCupCareLog(encrypted)
-    }
-
-    suspend fun deleteCupCareLog(id: Int) {
-        cupCareLogDao.deleteCupCareLog(id)
-    }
-
-    suspend fun insertSupportNote(note: SupportNote) {
-        val encrypted = note.copy(noteBody = EncryptionHelper.encryptSensitiveText(note.noteBody) ?: "")
-        supportNoteDao.insertSupportNote(encrypted)
-    }
-
-    suspend fun deleteSupportNote(id: Int) {
-        supportNoteDao.deleteSupportNote(id)
-    }
-
-    suspend fun insertSymptomLog(log: SymptomLog) {
-        val encrypted = log.copy(notes = log.notes?.let { EncryptionHelper.encryptSensitiveText(it) })
-        symptomLogDao.insertSymptomLog(encrypted)
-    }
-
-    suspend fun deleteSymptomLog(id: Int) {
-        symptomLogDao.deleteSymptomLog(id)
-    }
-
-    suspend fun clearAllData() {
-        db.clearAllTables()
-    }
+    // --- Clear All (for logout/reset) ---
+    suspend fun clearAllData() = db.clearAllTables()
 }

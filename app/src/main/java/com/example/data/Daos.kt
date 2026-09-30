@@ -3,6 +3,10 @@ package com.example.data
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 
+// ==========================================
+// PROFILE DAO
+// ==========================================
+
 @Dao
 interface ProfileDao {
     @Query("SELECT * FROM profile WHERE id = 1 LIMIT 1")
@@ -14,6 +18,10 @@ interface ProfileDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertProfile(profile: Profile)
 }
+
+// ==========================================
+// PERIOD LOG DAO
+// ==========================================
 
 @Dao
 interface PeriodLogDao {
@@ -30,6 +38,32 @@ interface PeriodLogDao {
     suspend fun getPeriodLogById(id: Int): PeriodLog?
 }
 
+// ==========================================
+// BEHAVIOUR LOG DAO (full check-in)
+// ==========================================
+
+@Dao
+interface BehaviourLogDao {
+    @Query("SELECT * FROM behaviour_logs ORDER BY logDate DESC")
+    fun getAllBehaviourLogs(): Flow<List<BehaviourLog>>
+
+    @Query("SELECT * FROM behaviour_logs WHERE logDate = :date LIMIT 1")
+    suspend fun getBehaviourLogByDate(date: String): BehaviourLog?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBehaviourLog(log: BehaviourLog)
+
+    @Query("DELETE FROM behaviour_logs WHERE id = :id")
+    suspend fun deleteBehaviourLog(id: Int)
+
+    @Query("SELECT * FROM behaviour_logs WHERE crisisFlag = 1 ORDER BY logDate DESC")
+    fun getCrisisLogs(): Flow<List<BehaviourLog>>
+}
+
+// ==========================================
+// MOOD LOG DAO (legacy - keep for backward compat)
+// ==========================================
+
 @Dao
 interface MoodLogDao {
     @Query("SELECT * FROM mood_logs ORDER BY date DESC")
@@ -41,6 +75,35 @@ interface MoodLogDao {
     @Query("DELETE FROM mood_logs WHERE id = :id")
     suspend fun deleteMoodLog(id: Int)
 }
+
+// ==========================================
+// MEDICAL JOURNAL DAO
+// ==========================================
+
+@Dao
+interface MedicalJournalDao {
+    @Query("SELECT * FROM medical_journal_entries ORDER BY entryDate DESC")
+    fun getAllEntries(): Flow<List<MedicalJournalEntry>>
+
+    @Query("SELECT * FROM medical_journal_entries WHERE id = :id LIMIT 1")
+    suspend fun getEntryById(id: Int): MedicalJournalEntry?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertEntry(entry: MedicalJournalEntry)
+
+    @Update
+    suspend fun updateEntry(entry: MedicalJournalEntry)
+
+    @Query("DELETE FROM medical_journal_entries WHERE id = :id")
+    suspend fun deleteEntry(id: Int)
+
+    @Query("SELECT * FROM medical_journal_entries WHERE category = :category ORDER BY entryDate DESC")
+    fun getEntriesByCategory(category: String): Flow<List<MedicalJournalEntry>>
+}
+
+// ==========================================
+// LEGACY JOURNAL ENTRY DAO
+// ==========================================
 
 @Dao
 interface JournalEntryDao {
@@ -54,6 +117,92 @@ interface JournalEntryDao {
     suspend fun deleteJournalEntry(id: Int)
 }
 
+// ==========================================
+// MEDICINE REMINDER DAO
+// ==========================================
+
+@Dao
+interface MedicalReminderDao {
+    @Query("SELECT * FROM medical_reminders ORDER BY reminderTime ASC")
+    fun getAllReminders(): Flow<List<MedicalReminder>>
+
+    @Query("SELECT * FROM medical_reminders WHERE enabled = 1 ORDER BY reminderTime ASC")
+    fun getActiveReminders(): Flow<List<MedicalReminder>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertReminder(reminder: MedicalReminder)
+
+    @Update
+    suspend fun updateReminder(reminder: MedicalReminder)
+
+    @Query("DELETE FROM medical_reminders WHERE id = :id")
+    suspend fun deleteReminder(id: Int)
+}
+
+// ==========================================
+// CUP CARE LOG DAO
+// ==========================================
+
+@Dao
+interface CupCareLogDao {
+    @Query("SELECT * FROM cup_care_logs ORDER BY logDate DESC")
+    fun getAllCupCareLogs(): Flow<List<CupCareLog>>
+
+    @Query("SELECT * FROM cup_care_logs WHERE logDate = :date LIMIT 1")
+    suspend fun getCupCareLogByDate(date: String): CupCareLog?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCupCareLog(log: CupCareLog)
+
+    @Query("DELETE FROM cup_care_logs WHERE id = :id")
+    suspend fun deleteCupCareLog(id: Int)
+}
+
+// ==========================================
+// IN-APP NOTIFICATION DAO
+// ==========================================
+
+@Dao
+interface InAppNotificationDao {
+    @Query("SELECT * FROM in_app_notifications ORDER BY createdAt DESC")
+    fun getAllNotifications(): Flow<List<InAppNotification>>
+
+    @Query("SELECT COUNT(*) FROM in_app_notifications WHERE isRead = 0")
+    fun getUnreadCount(): Flow<Int>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertNotification(notification: InAppNotification)
+
+    @Query("UPDATE in_app_notifications SET isRead = 1 WHERE id = :id")
+    suspend fun markAsRead(id: Int)
+
+    @Query("UPDATE in_app_notifications SET isRead = 1")
+    suspend fun markAllAsRead()
+
+    @Query("DELETE FROM in_app_notifications WHERE id = :id")
+    suspend fun deleteNotification(id: Int)
+}
+
+// ==========================================
+// AUDIT LOG DAO (append-only; no delete/update)
+// ==========================================
+
+@Dao
+interface AuditLogDao {
+    @Query("SELECT * FROM audit_logs ORDER BY createdAt DESC LIMIT 500")
+    fun getRecentAuditLogs(): Flow<List<AuditLog>>
+
+    @Insert
+    suspend fun insertAuditLog(log: AuditLog)
+
+    @Query("SELECT * FROM audit_logs WHERE action IN ('delete', 'export') ORDER BY createdAt DESC LIMIT 100")
+    fun getHighRiskLogs(): Flow<List<AuditLog>>
+}
+
+// ==========================================
+// BOOKMARK DAO
+// ==========================================
+
 @Dao
 interface BookmarkDao {
     @Query("SELECT * FROM bookmarks")
@@ -65,122 +214,3 @@ interface BookmarkDao {
     @Query("DELETE FROM bookmarks WHERE articleSlug = :slug")
     suspend fun deleteBookmarkBySlug(slug: String)
 }
-
-@Dao
-interface MedicalJournalEntryDao {
-    @Query("SELECT * FROM medical_journal_entries ORDER BY entryDate DESC")
-    fun getAllEntries(): Flow<List<MedicalJournalEntry>>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertEntry(entry: MedicalJournalEntry)
-
-    @Query("DELETE FROM medical_journal_entries WHERE id = :id")
-    suspend fun deleteEntry(id: Int)
-}
-
-@Dao
-interface MedicalReminderDao {
-    @Query("SELECT * FROM medical_reminders ORDER BY reminderTime ASC")
-    fun getAllReminders(): Flow<List<MedicalReminder>>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertReminder(reminder: MedicalReminder)
-
-    @Query("DELETE FROM medical_reminders WHERE id = :id")
-    suspend fun deleteReminder(id: Int)
-}
-
-@Dao
-interface BehaviourLogDao {
-    @Query("SELECT * FROM behaviour_logs ORDER BY date DESC")
-    fun getAllBehaviourLogs(): Flow<List<BehaviourLog>>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertBehaviourLog(log: BehaviourLog)
-
-    @Query("DELETE FROM behaviour_logs WHERE id = :id")
-    suspend fun deleteBehaviourLog(id: Int)
-}
-
-@Dao
-interface CupCareLogDao {
-    @Query("SELECT * FROM cup_care_logs ORDER BY createdAt DESC")
-    fun getAllCupCareLogs(): Flow<List<CupCareLog>>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertCupCareLog(log: CupCareLog)
-
-    @Query("DELETE FROM cup_care_logs WHERE id = :id")
-    suspend fun deleteCupCareLog(id: Int)
-}
-
-@Dao
-interface SupportNoteDao {
-    @Query("SELECT * FROM support_notes ORDER BY createdAt DESC")
-    fun getAllSupportNotes(): Flow<List<SupportNote>>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertSupportNote(note: SupportNote)
-
-    @Query("DELETE FROM support_notes WHERE id = :id")
-    suspend fun deleteSupportNote(id: Int)
-}
-
-@Dao
-interface SymptomLogDao {
-    @Query("SELECT * FROM symptom_logs ORDER BY date DESC")
-    fun getAllSymptomLogs(): Flow<List<SymptomLog>>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertSymptomLog(log: SymptomLog)
-
-    @Query("DELETE FROM symptom_logs WHERE id = :id")
-    suspend fun deleteSymptomLog(id: Int)
-}
-
-@Dao
-interface UserCredentialsDao {
-    @Query("SELECT * FROM user_credentials WHERE emailHash = :emailHash LIMIT 1")
-    suspend fun getCredentialsByHash(emailHash: String): UserCredentials?
-
-    @Query("SELECT * FROM user_credentials WHERE isLoggedIn = 1 LIMIT 1")
-    fun getLoggedInCredentialsFlow(): Flow<UserCredentials?>
-
-    @Query("SELECT * FROM user_credentials WHERE isLoggedIn = 1 LIMIT 1")
-    suspend fun getLoggedInCredentialsSync(): UserCredentials?
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertCredentials(credentials: UserCredentials)
-
-    @Query("UPDATE user_credentials SET isLoggedIn = 0")
-    suspend fun logoutAll()
-
-    @Query("UPDATE user_credentials SET isLoggedIn = 1 WHERE emailHash = :emailHash")
-    suspend fun loginUser(emailHash: String)
-
-    @Query("DELETE FROM user_credentials")
-    suspend fun deleteAllCredentials()
-}
-
-@Dao
-interface LoginSecurityEventDao {
-    @Query("SELECT * FROM login_security_events ORDER BY createdAt DESC")
-    fun getAllSecurityEvents(): Flow<List<LoginSecurityEvent>>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertSecurityEvent(event: LoginSecurityEvent)
-}
-
-@Dao
-interface AccountSecurityStateDao {
-    @Query("SELECT * FROM account_security_state WHERE emailHash = :emailHash LIMIT 1")
-    suspend fun getSecurityState(emailHash: String): AccountSecurityState?
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertSecurityState(state: AccountSecurityState)
-
-    @Query("DELETE FROM account_security_state WHERE emailHash = :emailHash")
-    suspend fun deleteSecurityState(emailHash: String)
-}
-
-
