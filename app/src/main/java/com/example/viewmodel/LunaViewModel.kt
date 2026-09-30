@@ -4,650 +4,198 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.*
-import com.example.security.HashUtils
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
-class LunaViewModel @JvmOverloads constructor(
-    application: Application,
-    private val injectedRepository: LunaRepository? = null
-) : AndroidViewModel(application) {
-    private val repository: LunaRepository = injectedRepository ?: LunaRepository(LunaDatabase.getDatabase(application))
+class LunaViewModel(application: Application) : AndroidViewModel(application) {
 
-    init {
-        // Repository is already initialized above
+    private val repository: LunaRepository
+
+    // Free tier AI limits
+    companion object {
+        const val FREE_AI_MESSAGES_LIMIT = 20
+        const val PREMIUM_AI_MESSAGES_LIMIT = 200
     }
 
-    // Flows from Repository
+    init {
+        val database = LunaDatabase.getDatabase(application)
+        repository = LunaRepository(database)
+    }
+
+    // ==============================
+    // CORE STATE FLOWS
+    // ==============================
+
     val profile: StateFlow<Profile?> = repository.profile
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val periodLogs: StateFlow<List<PeriodLog>> = repository.periodLogs
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val behaviourLogs: StateFlow<List<BehaviourLog>> = repository.behaviourLogs
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val moodLogs: StateFlow<List<MoodLog>> = repository.moodLogs
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val medicalJournalEntries: StateFlow<List<MedicalJournalEntry>> =
+        repository.medicalJournalEntries
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val journalEntries: StateFlow<List<JournalEntry>> = repository.journalEntries
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    val bookmarks: StateFlow<List<Bookmark>> = repository.bookmarks
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    val medicalJournalEntries: StateFlow<List<MedicalJournalEntry>> = repository.medicalJournalEntries
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val medicalReminders: StateFlow<List<MedicalReminder>> = repository.medicalReminders
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val behaviourLogs: StateFlow<List<BehaviourLog>> = repository.behaviourLogs
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
     val cupCareLogs: StateFlow<List<CupCareLog>> = repository.cupCareLogs
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val supportNotes: StateFlow<List<SupportNote>> = repository.supportNotes
+    val notifications: StateFlow<List<InAppNotification>> = repository.inAppNotifications
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val symptomLogs: StateFlow<List<SymptomLog>> = repository.symptomLogs
+    val unreadNotificationCount: StateFlow<Int> = repository.unreadNotificationCount
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val bookmarks: StateFlow<List<Bookmark>> = repository.bookmarks
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // New Session & Security Flows/States
-    val loggedInCredentials: StateFlow<UserCredentials?> = repository.loggedInCredentialsFlow
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    // ==============================
+    // AUTH STATE
+    // ==============================
 
-    val securityEvents: StateFlow<List<LoginSecurityEvent>> = repository.securityEventsFlow
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    private val _loginError = MutableStateFlow<String?>(null)
-    val loginError: StateFlow<String?> = _loginError.asStateFlow()
-
-    private val _isSubmitting = MutableStateFlow(false)
-    val isSubmitting: StateFlow<Boolean> = _isSubmitting.asStateFlow()
-
-    private val _captchaRequired = MutableStateFlow(false)
-    val captchaRequired: StateFlow<Boolean> = _captchaRequired.asStateFlow()
-
-    // Pin Authenticated State for Secure App Lock
     private val _isPinAuthenticated = MutableStateFlow(false)
     val isPinAuthenticated: StateFlow<Boolean> = _isPinAuthenticated.asStateFlow()
 
-    // SEO / Deep Link Routing state
-    private val _deepLinkRoute = MutableStateFlow<String?>(null)
-    val deepLinkRoute: StateFlow<String?> = _deepLinkRoute.asStateFlow()
-
-    fun handleDeepLink(path: String) {
-        _deepLinkRoute.value = path
-    }
-
-    fun clearDeepLinkRoute() {
-        _deepLinkRoute.value = null
-    }
-
-    // Crisis screening state
-    private val _showCrisisScreen = MutableStateFlow(false)
-    val showCrisisScreen: StateFlow<Boolean> = _showCrisisScreen.asStateFlow()
-
-    fun triggerCrisisDialog() {
-        _showCrisisScreen.value = true
-    }
-
-    fun dismissCrisisDialog() {
-        _showCrisisScreen.value = false
-    }
-
-    private fun checkAndTriggerCrisis(text: String?) {
-        if (!text.isNullOrEmpty() && CycleUtils.detectCrisisText(text)) {
-            _showCrisisScreen.value = true
-        }
-    }
-
-    // Temporary Guest Profile / Current User Profile for guest mode simulation
     private val _isGuestUser = MutableStateFlow(false)
     val isGuestUser: StateFlow<Boolean> = _isGuestUser.asStateFlow()
 
+    // ==============================
+    // TEMPORARY LOCATION (never persisted as exact coords)
+    // ==============================
+
+    private val _tempLat = MutableStateFlow<Double?>(null)
+    private val _tempLng = MutableStateFlow<Double?>(null)
+    val tempLat: StateFlow<Double?> = _tempLat.asStateFlow()
+    val tempLng: StateFlow<Double?> = _tempLng.asStateFlow()
+
+    fun setTempLocation(lat: Double, lng: Double) {
+        _tempLat.value = lat
+        _tempLng.value = lng
+        logAudit("USER", "read", "location_temp", "Temporary location set for nearby search")
+    }
+
+    /** Must be called after nearby search ends — clears exact coordinates from memory */
+    fun clearTempLocation() {
+        _tempLat.value = null
+        _tempLng.value = null
+    }
+
+    // ==============================
+    // ONBOARDING & GUEST
+    // ==============================
+
     fun setGuestMode(enabled: Boolean) {
         _isGuestUser.value = enabled
+        _isPinAuthenticated.value = true
         viewModelScope.launch {
-            // Save a placeholder profile to bypass full login/auth, marking it guest
             val existing = repository.getProfileSync()
             if (existing == null) {
                 repository.saveProfile(
                     Profile(
                         id = 1,
-                        displayName = "Guest Companion",
+                        displayName = "Guest",
                         acceptedDisclaimer = true,
-                        goals = listOf("Track my period", "Learn about menstrual cups")
+                        userMode = UserMode.EDUCATION_ONLY.name
                     )
                 )
             }
         }
     }
 
-    // --- Production-Grade Authentication Flows ---
-
-    fun login(email: String, password: String, onFinished: (Boolean) -> Unit = {}) {
-        val validationResult = ZodValidator.validateLogin(email, password)
-        if (!validationResult.success) {
-            _loginError.value = "Email or password is incorrect. Please check your details and try again."
-            onFinished(false)
-            return
-        }
-
-        val trimmedEmail = email.trim()
-        val emailHash = HashUtils.hashForLookup(HashUtils.normalizeEmail(trimmedEmail), HashUtils.HashPurpose.EMAIL_LOOKUP)
-        
+    fun onboardUser(
+        name: String,
+        birthYear: Int?,
+        cycleLength: Int,
+        periodLength: Int,
+        goals: List<String>,
+        pin: String = "",
+        userMode: String = UserMode.SELF_TRACKING.name,
+        genderMode: String = GenderMode.PREFER_NOT_TO_SAY.name,
+        pronoun: String = Pronoun.PREFER_NOT_TO_SAY.name,
+        customPronoun: String? = null,
+        bodyRelevantMode: String = BodyRelevantMode.PREFER_NOT_TO_SAY.name,
+        supportRelationship: String? = null,
+        consentConfirmed: Boolean = false,
+        religion: String? = null,
+        country: String? = null,
+        region: String? = null,
+        city: String? = null,
+        selectedConditions: List<String> = emptyList(),
+        behaviourFocuses: List<String> = emptyList()
+    ) {
         viewModelScope.launch {
-            _isSubmitting.value = true
-            _loginError.value = null
-            
-            // Check account security state
-            val state = repository.getSecurityState(emailHash)
-            val now = System.currentTimeMillis()
-            
-            // Server-side lock enforcement
-            if (state != null && state.lockedUntil != null && state.lockedUntil > now) {
-                _loginError.value = "Too many login attempts. For your safety, login is temporarily paused. Please wait a few minutes before trying again."
-                _isSubmitting.value = false
-                onFinished(false)
-                return@launch
-            }
-            
-            // Retrieve User Credentials
-            val credentials = repository.getCredentialsByHash(emailHash)
-            
-            // Layered server-side protection delay
-            val attemptCount = state?.failedAttemptCount ?: 0
-            val delayMs = when {
-                attemptCount >= 8 -> 5000L
-                attemptCount == 7 -> 3000L
-                attemptCount == 6 -> 1000L
-                attemptCount == 5 -> 500L
-                else -> 0L
-            }
-            if (delayMs > 0) {
-                kotlinx.coroutines.delay(delayMs)
-            }
-            
-            if (credentials == null) {
-                // Generic error: do not expose whether user email exists
-                handleFailedAttempt(emailHash)
-                _loginError.value = "Email or password is incorrect. Please check your details and try again."
-                _isSubmitting.value = false
-                onFinished(false)
-                return@launch
-            }
-            
-            // Verify candidate password hash
-            val candidateHash = EncryptionHelper.byteArrayToHex(
-                EncryptionHelper.deriveKey(password, EncryptionHelper.hexToByteArray(credentials.passwordSalt))
+            val hasPin = pin.isNotEmpty()
+            val newProfile = Profile(
+                id = 1,
+                displayName = name.ifBlank { "Companion" },
+                birthYear = birthYear,
+                averageCycleLength = cycleLength,
+                averagePeriodLength = periodLength,
+                goals = goals,
+                acceptedDisclaimer = true,
+                userMode = userMode,
+                genderMode = genderMode,
+                pronoun = pronoun,
+                customPronoun = customPronoun,
+                bodyRelevantMode = bodyRelevantMode,
+                supportRelationship = supportRelationship,
+                consentConfirmed = consentConfirmed,
+                religion = religion,
+                country = country,
+                region = region,
+                city = city,
+                selectedConditions = selectedConditions,
+                behaviourFocuses = behaviourFocuses,
+                locationPrivacyMode = LocationPrivacyMode.OFF.name,
+                securityPinEnabled = hasPin,
+                securityPin = pin,
+                role = UserRole.USER.name
             )
-            
-            // Constant-time comparison to thwart timing side-channel attacks
-            val isPasswordCorrect = constantTimeEquals(credentials.passwordHash, candidateHash)
-            
-            if (!isPasswordCorrect) {
-                handleFailedAttempt(emailHash)
-                _loginError.value = "Email or password is incorrect. Please check your details and try again."
-                _isSubmitting.value = false
-                onFinished(false)
-                return@launch
-            }
-            
-            // Success! Clear any local failed attempt states
-            repository.deleteSecurityState(emailHash)
-            
-            // Set session key securely derived from password
-            EncryptionHelper.setSessionKeyFromPassword(password, credentials.passwordSalt)
-            
-            // Persist logged in status
-            repository.loginUser(emailHash)
-            
-            // Log security event (Audit Log)
-            val successEvent = LoginSecurityEvent(
-                emailHash = emailHash,
-                ipHash = HashUtils.hashForRateLimit("127.0.0.1", HashUtils.HashPurpose.IP_RATE_LIMIT), // salted hash of mock local IP
-                userAgentHash = HashUtils.hashForRateLimit("AndroidAppletDevice", HashUtils.HashPurpose.USER_AGENT_RATE_LIMIT),
-                eventType = "LOGIN_SUCCESS",
-                metadata = "Login successful for masked email ${EncryptionHelper.maskEmail(trimmedEmail)}"
-            )
-            repository.insertSecurityEvent(successEvent)
-            
-            // Bypass pin verification for active logged in session
-            _isPinAuthenticated.value = true
-            _captchaRequired.value = false
-            _isSubmitting.value = false
-            onFinished(true)
+            repository.saveProfile(newProfile)
+            _isPinAuthenticated.value = !hasPin
+            logAudit("USER", "insert", "profile", "User onboarded")
         }
     }
 
-    fun register(email: String, password: String, confirm: String, displayName: String, onFinished: (Boolean, String?) -> Unit) {
-        val validationResult = ZodValidator.validateSignup(email, password, confirm, displayName)
-        if (!validationResult.success) {
-            onFinished(false, validationResult.errors.firstOrNull()?.message ?: "Validation failed")
-            return
-        }
-        
-        val trimmedEmail = email.trim()
-        val emailHash = HashUtils.hashForLookup(HashUtils.normalizeEmail(trimmedEmail), HashUtils.HashPurpose.EMAIL_LOOKUP)
-        
-        viewModelScope.launch {
-            _isSubmitting.value = true
-            _loginError.value = null
-            
-            val existing = repository.getCredentialsByHash(emailHash)
-            if (existing != null) {
-                // Rule: Signup duplicate email: Generic error to prevent enumeration
-                _isSubmitting.value = false
-                onFinished(false, "Please check your details or try logging in.")
-                return@launch
-            }
-            
-            // Generate unique salt per password
-            val salt = EncryptionHelper.generateSalt()
-            val passwordHash = EncryptionHelper.byteArrayToHex(
-                EncryptionHelper.deriveKey(password, EncryptionHelper.hexToByteArray(salt))
-            )
-            
-            // AES GCM encrypted email for display
-            val encryptedEmail = EncryptionHelper.encryptSensitiveText(trimmedEmail) ?: trimmedEmail
-            
-            val credentials = UserCredentials(
-                emailHash = emailHash,
-                encryptedEmail = encryptedEmail,
-                passwordHash = passwordHash,
-                passwordSalt = salt,
-                displayName = displayName,
-                isLoggedIn = true
-            )
-            
-            repository.insertCredentials(credentials)
-            
-            // Set session key in memory
-            EncryptionHelper.setSessionKeyFromPassword(password, salt)
-            
-            // Update app profile
-            var profileObj = repository.getProfileSync()
-            if (profileObj == null) {
-                profileObj = Profile(
-                    displayName = displayName,
-                    acceptedDisclaimer = true,
-                    consentConfirmed = true
-                )
-            } else {
-                profileObj = profileObj.copy(displayName = displayName)
-            }
-            repository.saveProfile(profileObj)
-            
-            // Log security event
-            val event = LoginSecurityEvent(
-                emailHash = emailHash,
-                ipHash = HashUtils.hashForRateLimit("127.0.0.1", HashUtils.HashPurpose.IP_RATE_LIMIT),
-                userAgentHash = HashUtils.hashForRateLimit("AndroidAppletDevice", HashUtils.HashPurpose.USER_AGENT_RATE_LIMIT),
-                eventType = "LOGIN_SUCCESS",
-                metadata = "Account registered successfully for masked email ${EncryptionHelper.maskEmail(trimmedEmail)}"
-            )
-            repository.insertSecurityEvent(event)
-            
-            _isPinAuthenticated.value = true
-            _isSubmitting.value = false
-            currentMockOtp = (100000..999999).random().toString()
-            onFinished(true, null)
-        }
-    }
+    // ==============================
+    // PIN AUTHENTICATION
+    // ==============================
 
-    fun forgotPassword(email: String, onFinished: (String) -> Unit) {
-        val trimmedEmail = email.trim()
-        val emailHash = HashUtils.hashForLookup(HashUtils.normalizeEmail(trimmedEmail), HashUtils.HashPurpose.EMAIL_LOOKUP)
-        
-        viewModelScope.launch {
-            _isSubmitting.value = true
-            
-            // Generic response: "If an account exists for this email, password reset instructions will be sent."
-            // Do not reveal whether email exists!
-            val credentials = repository.getCredentialsByHash(emailHash)
-            if (credentials != null) {
-                val event = LoginSecurityEvent(
-                    emailHash = emailHash,
-                    ipHash = HashUtils.hashForRateLimit("127.0.0.1", HashUtils.HashPurpose.IP_RATE_LIMIT),
-                    userAgentHash = HashUtils.hashForRateLimit("AndroidAppletDevice", HashUtils.HashPurpose.USER_AGENT_RATE_LIMIT),
-                    eventType = "PASSWORD_RESET_REQUESTED",
-                    metadata = "Password reset instructions requested."
-                )
-                repository.insertSecurityEvent(event)
-            }
-            
-            _isSubmitting.value = false
-            onFinished("If an account exists for this email, password reset instructions will be sent.")
-        }
-    }
-
-    fun sendPhoneOtp(phone: String, onFinished: (Boolean, String?) -> Unit) {
-        viewModelScope.launch {
-            _isSubmitting.value = true
-            
-            val normalizedPhone = (if (phone.trim().startsWith("+")) "+" else "") + phone.replace(Regex("[^0-9]"), "")
-            if (normalizedPhone.length < 5) {
-                _isSubmitting.value = false
-                onFinished(false, "Invalid phone number format.")
-                return@launch
-            }
-            
-            val phoneHash = HashUtils.hashForRateLimit(HashUtils.normalizePhone(normalizedPhone), HashUtils.HashPurpose.PHONE_RATE_LIMIT)
-            val state = repository.getSecurityState(phoneHash)
-            val now = System.currentTimeMillis()
-            
-            if (state != null && state.lockedUntil != null && state.lockedUntil > now) {
-                _isSubmitting.value = false
-                onFinished(false, "Too many requests. Please try again later.")
-                return@launch
-            }
-            
-            val attempts = (state?.failedAttemptCount ?: 0) + 1
-            val lockedUntil = if (attempts >= 5) now + 15 * 60 * 1000L else null
-            
-            val updatedState = AccountSecurityState(
-                emailHash = phoneHash,
-                failedAttemptCount = attempts,
-                firstFailedAt = state?.firstFailedAt ?: now,
-                lastFailedAt = now,
-                lockedUntil = lockedUntil,
-                captchaRequired = attempts >= 3,
-                updatedAt = now
-            )
-            repository.insertSecurityState(updatedState)
-            
-            if (attempts >= 5) {
-                _isSubmitting.value = false
-                onFinished(false, "Too many requests. Please try again later.")
-                return@launch
-            }
-            
-            delay(1000) // Simulate network delay
-            _isSubmitting.value = false
-            currentMockOtp = (100000..999999).random().toString()
-            onFinished(true, null)
-        }
-    }
-
-    private var currentMockOtp: String? = null
-    fun verifyPhoneOtp(phone: String, otp: String, onFinished: (Boolean, String?) -> Unit) {
-        viewModelScope.launch {
-            _isSubmitting.value = true
-            
-            val normalizedPhone = (if (phone.trim().startsWith("+")) "+" else "") + phone.replace(Regex("[^0-9]"), "")
-            
-            val phoneHash = HashUtils.hashForRateLimit(HashUtils.normalizePhone(normalizedPhone), HashUtils.HashPurpose.PHONE_RATE_LIMIT)
-            val state = repository.getSecurityState(phoneHash)
-            val now = System.currentTimeMillis()
-            
-            if (state != null && state.lockedUntil != null && state.lockedUntil > now) {
-                _isSubmitting.value = false
-                onFinished(false, "Too many attempts. Please try again later.")
-                return@launch
-            }
-            
-            delay(1000) // Simulate network delay
-            
-            // Allow 123456 as a mock valid OTP since no real SMS provider is hooked up
-            if (otp.length == 6 && otp == currentMockOtp) {
-                repository.deleteSecurityState(phoneHash)
-                
-                // Use a mock session key for phone auth
-                EncryptionHelper.setSessionKeyFromPassword("phone_$normalizedPhone", "phone_salt")
-                
-                val userHash = HashUtils.hashForLookup(HashUtils.normalizePhone(normalizedPhone), HashUtils.HashPurpose.PHONE_LOOKUP)
-                val credentials = repository.getCredentialsByHash(userHash)
-                
-                if (credentials == null) {
-                    val creds = UserCredentials(
-                        emailHash = userHash,
-                        encryptedEmail = EncryptionHelper.encryptSensitiveText(normalizedPhone) ?: "",
-                        passwordHash = "phone_auth",
-                        passwordSalt = "phone_salt",
-                        displayName = "User " + normalizedPhone.takeLast(4),
-                        isLoggedIn = true
-                    )
-                    repository.insertCredentials(creds)
-                    
-                    // Create base profile
-                    repository.saveProfile(
-                        Profile(
-                            id = 1,
-                            displayName = creds.displayName,
-                            acceptedDisclaimer = true,
-                            goals = emptyList()
-                        )
-                    )
-                } else {
-                    repository.loginUser(userHash)
-                }
-                
-                _isSubmitting.value = false
-                currentMockOtp = (100000..999999).random().toString()
-            onFinished(true, null)
-            } else {
-                val attempts = (state?.failedAttemptCount ?: 0) + 1
-                val lockedUntil = if (attempts >= 5) now + 15 * 60 * 1000L else null
-                
-                val updatedState = AccountSecurityState(
-                    emailHash = phoneHash,
-                    failedAttemptCount = attempts,
-                    firstFailedAt = state?.firstFailedAt ?: now,
-                    lastFailedAt = now,
-                    lockedUntil = lockedUntil,
-                    captchaRequired = attempts >= 3,
-                    updatedAt = now
-                )
-                repository.insertSecurityState(updatedState)
-                
-                _isSubmitting.value = false
-                onFinished(false, "The verification code is invalid or expired. Request a new code and try again.")
-            }
-        }
-    }
-
-    fun continueWithGoogle(onFinished: (Boolean, String?) -> Unit) {
-        viewModelScope.launch {
-            _isSubmitting.value = true
-            delay(1000)
-            _isSubmitting.value = false
-            onFinished(false, "Google OAuth is not configured with valid Client ID in this environment.")
-        }
-    }
-
-    fun continueWithFacebook(onFinished: (Boolean, String?) -> Unit) {
-        viewModelScope.launch {
-            _isSubmitting.value = true
-            delay(1000)
-            _isSubmitting.value = false
-            onFinished(false, "Facebook OAuth is not configured with valid App ID in this environment.")
-        }
-    }
-
-    fun continueWithTikTok(onFinished: (Boolean, String?) -> Unit) {
-        viewModelScope.launch {
-            _isSubmitting.value = true
-            delay(1000)
-            _isSubmitting.value = false
-            onFinished(false, "TikTok Login Kit is not configured. Missing Client Key and Secret.")
-        }
-    }
-
-    fun resetPassword(email: String, newPassword: String, confirm: String, onFinished: (Boolean, String?) -> Unit) {
-        val trimmedEmail = email.trim()
-        val emailHash = HashUtils.hashForLookup(HashUtils.normalizeEmail(trimmedEmail), HashUtils.HashPurpose.EMAIL_LOOKUP)
-        
-        val validationResult = ZodValidator.validateSignup(trimmedEmail, newPassword, confirm, "User")
-        if (!validationResult.success) {
-            onFinished(false, validationResult.errors.find { it.field == "password" || it.field == "confirm" }?.message ?: "Validation failed")
-            return
-        }
-        
-        viewModelScope.launch {
-            _isSubmitting.value = true
-            val credentials = repository.getCredentialsByHash(emailHash)
-            if (credentials == null) {
-                _isSubmitting.value = false
-                onFinished(false, "Failed to reset password. Please check your details and try again.")
-                return@launch
-            }
-            
-            val newSalt = EncryptionHelper.generateSalt()
-            val newHash = EncryptionHelper.byteArrayToHex(
-                EncryptionHelper.deriveKey(newPassword, EncryptionHelper.hexToByteArray(newSalt))
-            )
-            
-            val updated = credentials.copy(
-                passwordHash = newHash,
-                passwordSalt = newSalt
-            )
-            repository.insertCredentials(updated)
-            
-            // Clear security failure states
-            repository.deleteSecurityState(emailHash)
-            
-            val event = LoginSecurityEvent(
-                emailHash = emailHash,
-                ipHash = HashUtils.hashForRateLimit("127.0.0.1", HashUtils.HashPurpose.IP_RATE_LIMIT),
-                userAgentHash = HashUtils.hashForRateLimit("AndroidAppletDevice", HashUtils.HashPurpose.USER_AGENT_RATE_LIMIT),
-                eventType = "PASSWORD_RESET_SUCCESS",
-                metadata = "Password reset completed successfully."
-            )
-            repository.insertSecurityEvent(event)
-            
-            _isSubmitting.value = false
-            currentMockOtp = (100000..999999).random().toString()
-            onFinished(true, null)
-        }
-    }
-
-    fun logout() {
-        viewModelScope.launch {
-            // Clear DB logged-in flag
-            repository.logoutAll()
-            
-            // Clear session memory key
-            EncryptionHelper.clearSession()
-            
-            _isGuestUser.value = false
-            _navigationHistory.value = emptyList()
-            _isPinAuthenticated.value = false
-            _loginError.value = null
-            _captchaRequired.value = false
-            
-            val event = LoginSecurityEvent(
-                emailHash = null,
-                ipHash = HashUtils.hashForRateLimit("127.0.0.1", HashUtils.HashPurpose.IP_RATE_LIMIT),
-                userAgentHash = HashUtils.hashForRateLimit("AndroidAppletDevice", HashUtils.HashPurpose.USER_AGENT_RATE_LIMIT),
-                eventType = "LOGOUT",
-                metadata = "User initiated secure logout from session."
-            )
-            repository.insertSecurityEvent(event)
-        }
-    }
-
-    private suspend fun handleFailedAttempt(emailHash: String) {
-        val now = System.currentTimeMillis()
-        val state = repository.getSecurityState(emailHash) ?: AccountSecurityState(
-            emailHash = emailHash,
-            failedAttemptCount = 0,
-            createdAt = now,
-            updatedAt = now
-        )
-        
-        val newAttemptCount = state.failedAttemptCount + 1
-        var lockedUntil: Long? = null
-        var captchaRequired = state.captchaRequired
-        
-        // Anti-brute force limits (Layered server-side protection):
-        // Attempts 1–4: allow normal retry
-        // Attempt 5 within 10 minutes: introduce a short delay
-        // Attempt 6: 1-minute cooldown
-        // Attempt 7: 3-minute cooldown
-        // Attempt 8: 5-minute cooldown
-        // Attempt 10 within 30 minutes: require CAPTCHA or additional verification
-        when {
-            newAttemptCount >= 10 -> {
-                lockedUntil = now + (30 * 60 * 1000)
-                captchaRequired = true
-            }
-            newAttemptCount == 8 -> {
-                lockedUntil = now + (5 * 60 * 1000)
-                captchaRequired = true
-            }
-            newAttemptCount == 7 -> {
-                lockedUntil = now + (3 * 60 * 1000)
-            }
-            newAttemptCount == 6 -> {
-                lockedUntil = now + (1 * 60 * 1000)
-            }
-            newAttemptCount == 5 -> {
-                // just a short delay enforced in the login flow
-            }
-        }
-        
-        val updatedState = state.copy(
-            failedAttemptCount = newAttemptCount,
-            firstFailedAt = state.firstFailedAt ?: now,
-            lastFailedAt = now,
-            lockedUntil = lockedUntil,
-            captchaRequired = captchaRequired,
-            updatedAt = now
-        )
-        
-        repository.insertSecurityState(updatedState)
-        
-        // Log secure events
-        val failedEvent = LoginSecurityEvent(
-            emailHash = emailHash,
-            ipHash = HashUtils.hashForRateLimit("127.0.0.1", HashUtils.HashPurpose.IP_RATE_LIMIT),
-            userAgentHash = HashUtils.hashForRateLimit("AndroidAppletDevice", HashUtils.HashPurpose.USER_AGENT_RATE_LIMIT),
-            eventType = "LOGIN_FAILED",
-            metadata = "Failed login attempt $newAttemptCount. Locked until: $lockedUntil"
-        )
-        repository.insertSecurityEvent(failedEvent)
-        
-        if (lockedUntil != null) {
-            val lockEvent = LoginSecurityEvent(
-                emailHash = emailHash,
-                ipHash = HashUtils.hashForRateLimit("127.0.0.1", HashUtils.HashPurpose.IP_RATE_LIMIT),
-                userAgentHash = HashUtils.hashForRateLimit("AndroidAppletDevice", HashUtils.HashPurpose.USER_AGENT_RATE_LIMIT),
-                eventType = if (newAttemptCount >= 10) "ACCOUNT_LOCKED_TEMPORARILY" else "RATE_LIMIT_TRIGGERED",
-                metadata = "Rate limit lock triggered."
-            )
-            repository.insertSecurityEvent(lockEvent)
-        }
-        
-        if (captchaRequired && !state.captchaRequired) {
-            val captchaEvent = LoginSecurityEvent(
-                emailHash = emailHash,
-                ipHash = HashUtils.hashForRateLimit("127.0.0.1", HashUtils.HashPurpose.IP_RATE_LIMIT),
-                userAgentHash = HashUtils.hashForRateLimit("AndroidAppletDevice", HashUtils.HashPurpose.USER_AGENT_RATE_LIMIT),
-                eventType = "CAPTCHA_REQUIRED",
-                metadata = "Captcha required state triggered."
-            )
-            repository.insertSecurityEvent(captchaEvent)
-            _captchaRequired.value = true
-        }
-    }
-
-    private fun constantTimeEquals(a: String, b: String): Boolean {
-        if (a.length != b.length) return false
-        var result = 0
-        for (i in 0 until a.length) {
-            result = result or (a[i].code xor b[i].code)
-        }
-        return result == 0
-    }
+    private var failedPinAttempts = 0
+    private var lockoutEndTime: Long = 0
 
     fun authenticatePin(input: String): Boolean {
+        if (System.currentTimeMillis() < lockoutEndTime) {
+            logAudit("USER", "login_failed", "pin_auth", "Rate limit active")
+            return false
+        }
+
         val currentProfile = profile.value
         return if (currentProfile != null && currentProfile.securityPinEnabled) {
             val matches = currentProfile.securityPin == input
             if (matches) {
                 _isPinAuthenticated.value = true
+                failedPinAttempts = 0
+                logAudit(currentProfile.role, "login", "pin_auth", "PIN authenticated")
+            } else {
+                failedPinAttempts++
+                if (failedPinAttempts >= 5) {
+                    lockoutEndTime = System.currentTimeMillis() + 15 * 60 * 1000 // 15 minutes
+                }
+                logAudit(currentProfile.role, "login_failed", "pin_auth", "Failed PIN attempt")
             }
             matches
         } else {
@@ -658,209 +206,67 @@ class LunaViewModel @JvmOverloads constructor(
 
     fun lockApp() {
         _isPinAuthenticated.value = false
+        logAudit("USER", "logout", "session", "App locked")
     }
 
-    fun onboardUser(
-        name: String,
-        birthYear: Int?,
-        cycleLength: Int,
-        periodLength: Int,
-        goals: List<String>,
-        pin: String = "",
-        userMode: String = "SELF_TRACKING",
-        genderMode: String = "FEMALE",
-        bodyRelevantMode: String = "MENSTRUATES",
-        supportRelationship: String? = null,
-        consentConfirmed: Boolean = false,
-        sharedTrackingConsent: Boolean = false,
-        behaviourFocuses: List<String> = emptyList(),
-        medicineReminders: Boolean = false,
-        waterReminders: Boolean = true
-    ) {
+    fun logout() {
         viewModelScope.launch {
-            val hasPin = pin.isNotEmpty()
-            val newProfile = Profile(
-                id = 1,
-                displayName = name,
-                birthYear = birthYear,
-                averageCycleLength = cycleLength,
-                averagePeriodLength = periodLength,
-                goals = goals,
-                acceptedDisclaimer = true,
-                securityPinEnabled = hasPin,
-                securityPin = pin,
-                userMode = userMode,
-                genderMode = genderMode,
-                bodyRelevantMode = bodyRelevantMode,
-                supportRelationship = supportRelationship,
-                consentConfirmed = consentConfirmed,
-                sharedTrackingConsent = sharedTrackingConsent,
-                behaviourFocuses = behaviourFocuses,
-                medicineReminders = medicineReminders,
-                waterReminders = waterReminders
-            )
-            repository.saveProfile(newProfile)
-            _isPinAuthenticated.value = !hasPin
+            _isPinAuthenticated.value = false
+            _isGuestUser.value = false
+            _tempLat.value = null
+            _tempLng.value = null
+            logAudit("USER", "logout", "session", "User logged out")
         }
     }
 
-    fun updateBehaviourFocuses(focuses: List<String>) {
-        viewModelScope.launch {
-            val current = repository.getProfileSync() ?: Profile()
-            repository.saveProfile(current.copy(behaviourFocuses = focuses))
-        }
-    }
-
-    fun updateSharedTrackingConsent(consent: Boolean) {
-        viewModelScope.launch {
-            val current = repository.getProfileSync() ?: Profile()
-            repository.saveProfile(current.copy(sharedTrackingConsent = consent))
-        }
-    }
-
-    fun updateProfile(profile: Profile) {
-        viewModelScope.launch {
-            repository.saveProfile(profile)
-        }
-    }
-
-    fun addBehaviourLog(
-        mood: String,
-        stressLevel: Int,
-        anxietyLevel: Int,
-        sleepHours: Double,
-        sleepQuality: Int,
-        painLevel: Int,
-        energyLevel: Int,
-        hydrationLevel: String,
-        foodCraving: String,
-        caffeineIntake: String,
-        movement: String,
-        studyWorkPressure: Int,
-        relationshipStress: Int,
-        socialMediaOverload: Int,
-        flowLevel: String,
-        symptoms: List<String>,
-        notes: String?
-    ) {
-        val entry = BehaviourLog(
-            date = java.time.LocalDate.now().toString(),
-            mood = mood,
-            stressLevel = stressLevel,
-            anxietyLevel = anxietyLevel,
-            sleepHours = sleepHours,
-            sleepQuality = sleepQuality,
-            painLevel = painLevel,
-            energyLevel = energyLevel,
-            hydrationLevel = hydrationLevel,
-            foodCraving = foodCraving,
-            caffeineIntake = caffeineIntake,
-            movement = movement,
-            studyWorkPressure = studyWorkPressure,
-            relationshipStress = relationshipStress,
-            socialMediaOverload = socialMediaOverload,
-            flowLevel = flowLevel,
-            symptoms = symptoms,
-            notes = notes,
-            flags = emptyList()
-        )
-        val computedFlags = CycleUtils.calculateBehaviourFlags(entry)
-        val finalEntry = entry.copy(flags = computedFlags)
-
-        checkAndTriggerCrisis(notes)
-        if (mood.uppercase() == "VERY_LOW" || mood.lowercase() == "very low") {
-            triggerCrisisDialog()
-        }
-
-        viewModelScope.launch {
-            repository.insertBehaviourLog(finalEntry)
-        }
-    }
-
-    fun deleteBehaviourLog(id: Int) {
-        viewModelScope.launch {
-            repository.deleteBehaviourLog(id)
-        }
-    }
-
-    fun addCupCareLog(
-        insertedAt: String,
-        emptiedAt: String,
-        cleanedToday: Boolean,
-        discomfortLevel: Int,
-        leakageIssue: Boolean,
-        notes: String?
-    ) {
-        viewModelScope.launch {
-            repository.insertCupCareLog(
-                CupCareLog(
-                    insertedAt = insertedAt,
-                    emptiedAt = emptiedAt,
-                    cleanedToday = cleanedToday,
-                    discomfortLevel = discomfortLevel,
-                    leakageIssue = leakageIssue,
-                    notes = notes
-                )
-            )
-        }
-    }
-
-    fun deleteCupCareLog(id: Int) {
-        viewModelScope.launch {
-            repository.deleteCupCareLog(id)
-        }
-    }
-
-    fun addSupportNote(
-        relationship: String,
-        noteTitle: String,
-        noteBody: String
-    ) {
-        viewModelScope.launch {
-            repository.insertSupportNote(
-                SupportNote(
-                    relationship = relationship,
-                    noteTitle = noteTitle,
-                    noteBody = noteBody
-                )
-            )
-        }
-    }
-
-    fun deleteSupportNote(id: Int) {
-        viewModelScope.launch {
-            repository.deleteSupportNote(id)
-        }
-    }
+    // ==============================
+    // PROFILE UPDATES
+    // ==============================
 
     fun updateCycleSettings(cycleLength: Int, periodLength: Int) {
         viewModelScope.launch {
             val current = repository.getProfileSync() ?: Profile()
-            repository.saveProfile(
-                current.copy(
-                    averageCycleLength = cycleLength,
-                    averagePeriodLength = periodLength
-                )
-            )
+            repository.saveProfile(current.copy(
+                averageCycleLength = cycleLength,
+                averagePeriodLength = periodLength
+            ))
         }
     }
 
-    fun updateProfile(
+    fun updateProfileIdentity(
         displayName: String,
-        birthYear: Int?,
+        pronoun: String,
+        customPronoun: String?,
         genderMode: String,
-        userMode: String
+        religion: String?,
+        country: String?,
+        region: String?,
+        city: String?,
+        behaviourFocuses: List<String>
     ) {
         viewModelScope.launch {
             val current = repository.getProfileSync() ?: Profile()
-            repository.saveProfile(
-                current.copy(
-                    displayName = displayName,
-                    birthYear = birthYear,
-                    genderMode = genderMode,
-                    userMode = userMode
-                )
-            )
+            repository.saveProfile(current.copy(
+                displayName = displayName,
+                pronoun = pronoun,
+                customPronoun = customPronoun,
+                genderMode = genderMode,
+                religion = religion,
+                country = country,
+                region = region,
+                city = city,
+                behaviourFocuses = behaviourFocuses
+            ))
+            logAudit(current.role, "update", "profile", "Identity updated")
+        }
+    }
+
+    fun updateLocationPrivacyMode(mode: LocationPrivacyMode) {
+        viewModelScope.launch {
+            val current = repository.getProfileSync() ?: Profile()
+            repository.saveProfile(current.copy(locationPrivacyMode = mode.name))
+            clearTempLocation()
+            logAudit(current.role, "update", "profile", "Location privacy mode changed to ${mode.name}")
         }
     }
 
@@ -873,15 +279,13 @@ class LunaViewModel @JvmOverloads constructor(
     ) {
         viewModelScope.launch {
             val current = repository.getProfileSync() ?: Profile()
-            repository.saveProfile(
-                current.copy(
-                    periodReminders = periodReminders,
-                    moodReminders = moodReminders,
-                    cupReminders = cupReminders,
-                    selfCareReminders = selfCareReminders,
-                    reminderTime = reminderTime
-                )
-            )
+            repository.saveProfile(current.copy(
+                periodReminders = periodReminders,
+                moodReminders = moodReminders,
+                cupReminders = cupReminders,
+                selfCareReminders = selfCareReminders,
+                reminderTime = reminderTime
+            ))
         }
     }
 
@@ -892,68 +296,114 @@ class LunaViewModel @JvmOverloads constructor(
         }
     }
 
-    // Period Logs
+    fun saveDashboardLayoutVersion(version: String) {
+        viewModelScope.launch {
+            val current = repository.getProfileSync() ?: Profile()
+            repository.saveProfile(current.copy(dashboardLayoutVersion = version))
+        }
+    }
+
+    // ==============================
+    // PERIOD LOGS
+    // ==============================
+
     fun addPeriodLog(
         startDate: String,
         endDate: String?,
         flowLevel: String,
         symptoms: List<String>,
-        notes: String?,
-        painLevel: Int? = null,
-        productUsed: String? = null,
-        changedProductFrequency: String? = null
+        notes: String?
     ) {
-        val validationResult = ZodValidator.validatePeriodLog(
-            startDate = startDate,
-            endDate = endDate,
-            flowLevel = flowLevel,
-            symptoms = symptoms,
-            notes = notes,
-            painLevel = painLevel,
-            productUsed = productUsed,
-            changedProductFrequency = changedProductFrequency
-        )
-        
-        if (!validationResult.success) {
-            // Depending on architecture, log error or throw exception.
-            // For now, silently return or perhaps use a flow to emit an error state.
-            return
-        }
-        
         viewModelScope.launch {
+            if (!CycleUtils.isValidDate(startDate)) return@launch
             repository.insertPeriodLog(
                 PeriodLog(
                     startDate = startDate,
                     endDate = endDate,
                     flowLevel = flowLevel,
                     symptoms = symptoms,
-                    notes = notes,
-                    painLevel = painLevel,
-                    productUsed = productUsed,
-                    changedProductFrequency = changedProductFrequency
+                    notesEncrypted = SecurityUtils.encrypt(notes)
                 )
             )
+            logAudit("USER", "insert", "period_logs", null)
         }
     }
 
     fun deletePeriodLog(id: Int) {
         viewModelScope.launch {
             repository.deletePeriodLog(id)
+            logAudit("USER", "delete", "period_logs", id.toString())
         }
     }
 
-    // Mood Logs
-    fun addMoodLog(
+    // ==============================
+    // BEHAVIOUR CHECK-IN (full)
+    // ==============================
+
+    fun addBehaviourLog(
         mood: String,
-        energy: Int,
-        stress: Int,
-        sleepQuality: Int?,
-        notes: String?
+        stressLevel: Int,
+        anxietyLevel: Int,
+        sleepHours: Float,
+        sleepQuality: Int,
+        painLevel: Int,
+        energyLevel: Int,
+        hydrationLevel: String,
+        foodCraving: String?,
+        caffeineIntake: String?,
+        movement: String?,
+        studyWorkPressure: Int,
+        relationshipStress: Int,
+        socialMediaOverload: Int,
+        flowLevel: String?,
+        symptoms: List<String>,
+        notes: String?,
+        crisisFlag: Boolean = false
     ) {
-        checkAndTriggerCrisis(notes)
-        if (mood == "Very low") {
-            triggerCrisisDialog()
+        viewModelScope.launch {
+            val flags = mutableListOf<String>()
+            if (crisisFlag) flags.add("CRISIS")
+            if (painLevel >= 8) flags.add("HIGH_PAIN")
+            if (stressLevel >= 8) flags.add("HIGH_STRESS")
+            if (sleepHours < 4f) flags.add("LOW_SLEEP")
+
+            repository.insertBehaviourLog(
+                BehaviourLog(
+                    logDate = CycleUtils.getTodayString(),
+                    mood = mood,
+                    stressLevel = stressLevel,
+                    anxietyLevel = anxietyLevel,
+                    sleepHours = sleepHours,
+                    sleepQuality = sleepQuality,
+                    painLevel = painLevel,
+                    energyLevel = energyLevel,
+                    hydrationLevel = hydrationLevel,
+                    foodCraving = foodCraving,
+                    caffeineIntake = caffeineIntake,
+                    movement = movement,
+                    studyWorkPressure = studyWorkPressure,
+                    relationshipStress = relationshipStress,
+                    socialMediaOverload = socialMediaOverload,
+                    flowLevel = flowLevel,
+                    symptoms = symptoms,
+                    notesEncrypted = SecurityUtils.encrypt(notes),
+                    crisisFlag = crisisFlag,
+                    flags = flags
+                )
+            )
+            logAudit("USER", "insert", "behaviour_logs", null)
         }
+    }
+
+    fun deleteBehaviourLog(id: Int) {
+        viewModelScope.launch {
+            repository.deleteBehaviourLog(id)
+            logAudit("USER", "delete", "behaviour_logs", id.toString())
+        }
+    }
+
+    // Legacy mood log (for backward compat)
+    fun addMoodLog(mood: String, energy: Int, stress: Int, sleepQuality: Int?, notes: String?) {
         viewModelScope.launch {
             repository.insertMoodLog(
                 MoodLog(
@@ -969,22 +419,56 @@ class LunaViewModel @JvmOverloads constructor(
     }
 
     fun deleteMoodLog(id: Int) {
+        viewModelScope.launch { repository.deleteMoodLog(id) }
+    }
+
+    // ==============================
+    // MEDICAL JOURNAL
+    // ==============================
+
+    fun addMedicalJournalEntry(
+        entryDate: String,
+        category: String,
+        title: String,
+        symptoms: List<String>,
+        painLevel: Int,
+        mood: String?,
+        flowLevel: String?,
+        medicinesTaken: String?,
+        doctorVisit: Boolean,
+        nextAppointment: String?,
+        notes: String?
+    ) {
         viewModelScope.launch {
-            repository.deleteMoodLog(id)
+            repository.insertMedicalJournalEntry(
+                MedicalJournalEntry(
+                    entryDate = entryDate,
+                    category = category,
+                    title = title,
+                    symptoms = symptoms,
+                    painLevel = painLevel,
+                    mood = mood,
+                    flowLevel = flowLevel,
+                    medicinesTaken = medicinesTaken,
+                    doctorVisit = doctorVisit,
+                    nextAppointment = nextAppointment,
+                    notesEncrypted = SecurityUtils.encrypt(notes),
+                    attachmentPath = null
+                )
+            )
+            logAudit("USER", "insert", "medical_journal_entries", null)
         }
     }
 
-    // Journal
-    fun addJournalEntry(
-        title: String,
-        body: String,
-        moodTag: String?,
-        cyclePhase: String?,
-        category: String = "General",
-        symptoms: String? = null
-    ) {
-        checkAndTriggerCrisis(title)
-        checkAndTriggerCrisis(body)
+    fun deleteMedicalJournalEntry(id: Int) {
+        viewModelScope.launch {
+            repository.deleteMedicalJournalEntry(id)
+            logAudit("USER", "delete", "medical_journal_entries", id.toString())
+        }
+    }
+
+    // Legacy journal entry
+    fun addJournalEntry(title: String, body: String, moodTag: String?, cyclePhase: String?) {
         viewModelScope.launch {
             repository.insertJournalEntry(
                 JournalEntry(
@@ -992,44 +476,127 @@ class LunaViewModel @JvmOverloads constructor(
                     title = title,
                     body = body,
                     moodTag = moodTag,
-                    cyclePhase = cyclePhase,
-                    category = category,
-                    symptoms = symptoms
-                )
-            )
-        }
-    }
-
-    fun addJournalEntryWithDate(
-        date: String,
-        title: String,
-        body: String,
-        moodTag: String?,
-        category: String = "General",
-        symptoms: String? = null
-    ) {
-        viewModelScope.launch {
-            repository.insertJournalEntry(
-                JournalEntry(
-                    date = date,
-                    title = title,
-                    body = body,
-                    moodTag = moodTag,
-                    cyclePhase = null,
-                    category = category,
-                    symptoms = symptoms
+                    cyclePhase = cyclePhase
                 )
             )
         }
     }
 
     fun deleteJournalEntry(id: Int) {
+        viewModelScope.launch { repository.deleteJournalEntry(id) }
+    }
+
+    // ==============================
+    // MEDICINE REMINDERS
+    // ==============================
+
+    fun addMedicalReminder(
+        title: String,
+        reminderType: String,
+        reminderTime: String,
+        repeatRule: String,
+        startDate: String,
+        endDate: String?,
+        notes: String?,
+        reasonNote: String?
+    ) {
         viewModelScope.launch {
-            repository.deleteJournalEntry(id)
+            repository.insertMedicalReminder(
+                MedicalReminder(
+                    title = title,
+                    reminderType = reminderType,
+                    reminderTime = reminderTime,
+                    repeatRule = repeatRule,
+                    startDate = startDate,
+                    endDate = endDate,
+                    enabled = true,
+                    notesEncrypted = SecurityUtils.encrypt(notes),
+                    reasonNote = reasonNote
+                )
+            )
+            logAudit("USER", "insert", "medical_reminders", null)
         }
     }
 
-    // Bookmarks
+    fun toggleReminderEnabled(reminder: MedicalReminder) {
+        viewModelScope.launch {
+            repository.updateMedicalReminder(reminder.copy(enabled = !reminder.enabled))
+        }
+    }
+
+    fun deleteMedicalReminder(id: Int) {
+        viewModelScope.launch {
+            repository.deleteMedicalReminder(id)
+            logAudit("USER", "delete", "medical_reminders", id.toString())
+        }
+    }
+
+    // ==============================
+    // CUP CARE LOG
+    // ==============================
+
+    fun addCupCareLog(
+        insertedAt: String?,
+        emptiedAt: String?,
+        cleanedToday: Boolean,
+        discomfortLevel: Int,
+        leakageIssue: Boolean,
+        notes: String?
+    ) {
+        viewModelScope.launch {
+            repository.insertCupCareLog(
+                CupCareLog(
+                    insertedAt = insertedAt,
+                    emptiedAt = emptiedAt,
+                    cleanedToday = cleanedToday,
+                    discomfortLevel = discomfortLevel,
+                    leakageIssue = leakageIssue,
+                    notesEncrypted = SecurityUtils.encrypt(notes),
+                    logDate = CycleUtils.getTodayString()
+                )
+            )
+            logAudit("USER", "insert", "cup_care_logs", null)
+        }
+    }
+
+    fun deleteCupCareLog(id: Int) {
+        viewModelScope.launch { repository.deleteCupCareLog(id) }
+    }
+
+    // ==============================
+    // NOTIFICATIONS
+    // ==============================
+
+    fun addNotification(title: String, message: String, type: String) {
+        viewModelScope.launch {
+            repository.insertNotification(
+                InAppNotification(
+                    title = title,
+                    message = message,
+                    type = type,
+                    isRead = false,
+                    createdAt = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                )
+            )
+        }
+    }
+
+    fun markNotificationRead(id: Int) {
+        viewModelScope.launch { repository.markNotificationRead(id) }
+    }
+
+    fun markAllNotificationsRead() {
+        viewModelScope.launch { repository.markAllNotificationsRead() }
+    }
+
+    fun deleteNotification(id: Int) {
+        viewModelScope.launch { repository.deleteNotification(id) }
+    }
+
+    // ==============================
+    // BOOKMARKS
+    // ==============================
+
     fun toggleBookmark(slug: String) {
         viewModelScope.launch {
             val list = bookmarks.value
@@ -1042,148 +609,89 @@ class LunaViewModel @JvmOverloads constructor(
         }
     }
 
-    // Medical Journal
-    fun addMedicalJournalEntry(
-        entryDate: String,
-        category: String,
-        title: String,
-        notes: String = "",
-        symptoms: List<String> = emptyList(),
-        painLevel: Int = 0,
-        mood: String = "Okay",
-        flowLevel: String = "None",
-        medicinesTaken: String = "",
-        doctorVisit: Boolean = false,
-        appointmentDate: String? = null,
-        doctorAdvice: String? = null
-    ) {
-        checkAndTriggerCrisis(title)
-        checkAndTriggerCrisis(notes)
-        if (mood == "Very low") {
-            triggerCrisisDialog()
-        }
+    // ==============================
+    // AI TOKEN MANAGEMENT
+    // ==============================
+
+    fun isAiLimitReached(): Boolean {
+        val p = profile.value ?: return false
+        val limit = if (p.isPremium) PREMIUM_AI_MESSAGES_LIMIT else FREE_AI_MESSAGES_LIMIT
+        return p.aiMessagesUsedThisMonth >= limit
+    }
+
+    fun getRemainingAiMessages(): Int {
+        val p = profile.value ?: return 0
+        val limit = if (p.isPremium) PREMIUM_AI_MESSAGES_LIMIT else FREE_AI_MESSAGES_LIMIT
+        return (limit - p.aiMessagesUsedThisMonth).coerceAtLeast(0)
+    }
+
+    fun consumeAiMessage() {
         viewModelScope.launch {
-            repository.insertMedicalJournalEntry(
-                MedicalJournalEntry(
-                    entryDate = entryDate,
-                    category = category,
-                    title = title,
-                    notes = notes,
-                    symptoms = symptoms,
-                    painLevel = painLevel,
-                    mood = mood,
-                    flowLevel = flowLevel,
-                    medicinesTaken = medicinesTaken,
-                    doctorVisit = doctorVisit,
-                    appointmentDate = appointmentDate,
-                    doctorAdvice = doctorAdvice
+            val current = repository.getProfileSync() ?: return@launch
+            val currentMonth = java.time.YearMonth.now().toString()
+            val monthMatches = current.aiCurrentMonth == currentMonth
+            val newUsed = if (monthMatches) current.aiMessagesUsedThisMonth + 1 else 1
+            repository.saveProfile(current.copy(
+                aiMessagesUsedThisMonth = newUsed,
+                aiCurrentMonth = currentMonth
+            ))
+        }
+    }
+
+    // ==============================
+    // RBAC CHECKS (local stubs)
+    // ==============================
+
+    fun userHasRole(requiredRole: UserRole): Boolean {
+        val userRoleStr = profile.value?.role ?: UserRole.USER.name
+        val userRole = try { UserRole.valueOf(userRoleStr) } catch (e: Exception) { UserRole.USER }
+        return when (requiredRole) {
+            UserRole.USER -> true
+            UserRole.PREMIUM_USER -> userRole in listOf(
+                UserRole.PREMIUM_USER, UserRole.ADMIN, UserRole.SUPER_ADMIN
+            )
+            UserRole.MODERATOR -> userRole in listOf(
+                UserRole.MODERATOR, UserRole.ADMIN, UserRole.SUPER_ADMIN
+            )
+            UserRole.ADMIN -> userRole in listOf(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+            UserRole.SUPER_ADMIN -> userRole == UserRole.SUPER_ADMIN
+            else -> false
+        }
+    }
+
+    // ==============================
+    // AUDIT LOGGING (internal)
+    // ==============================
+
+    private fun logAudit(role: String, action: String, resourceType: String, resourceId: String?) {
+        viewModelScope.launch {
+            repository.insertAuditLog(
+                AuditLog(
+                    actorRole = role,
+                    action = action,
+                    resourceType = resourceType,
+                    resourceId = resourceId,
+                    ipHash = null,       // No network IP in local-only mode
+                    userAgentHash = null,
+                    metadata = "{}",
+                    createdAt = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
                 )
             )
         }
     }
 
-    fun deleteMedicalJournalEntry(id: Int) {
-        viewModelScope.launch {
-            repository.deleteMedicalJournalEntry(id)
-        }
-    }
-
-    // Medical Reminders
-    fun addMedicalReminder(
-        title: String,
-        reminderType: String,
-        reminderTime: String,
-        repeatRule: String = "Daily",
-        enabled: Boolean = true,
-        notes: String? = null,
-        startDate: String? = null,
-        endDate: String? = null
-    ) 
-    {
-        viewModelScope.launch {
-            repository.insertMedicalReminder(
-                MedicalReminder(
-                    title = title,
-                    reminderType = reminderType,
-                    reminderTime = reminderTime,
-                    repeatRule = repeatRule,
-                    enabled = enabled,
-                    notes = notes,
-                    startDate = startDate,
-                    endDate = endDate
-                )
-            )
-        }
-    }
-
-    fun deleteMedicalReminder(id: Int) {
-        viewModelScope.launch {
-            repository.deleteMedicalReminder(id)
-        }
-    }
+    // ==============================
+    // DATA MANAGEMENT
+    // ==============================
 
     fun clearAllUserData() {
         viewModelScope.launch {
+            logAudit("USER", "delete", "all_data", "User requested data deletion")
             repository.clearAllData()
             _isPinAuthenticated.value = false
             _isGuestUser.value = false
-        }
-    }
-
-    // ==========================================
-    // NAVIGATION AUTO-TRACKING
-    // ==========================================
-    private val _navigationHistory = MutableStateFlow<List<NavigationTrack>>(emptyList())
-    val navigationHistory: StateFlow<List<NavigationTrack>> = _navigationHistory.asStateFlow()
-
-    private val _isAutoTrackingEnabled = MutableStateFlow(true)
-    val isAutoTrackingEnabled: StateFlow<Boolean> = _isAutoTrackingEnabled.asStateFlow()
-
-    fun setAutoTrackingEnabled(enabled: Boolean) {
-        _isAutoTrackingEnabled.value = enabled
-    }
-
-    fun trackNavigation(tabName: String) {
-        if (!_isAutoTrackingEnabled.value) return
-        val current = _navigationHistory.value
-        if (current.lastOrNull()?.tabName != tabName) {
-            _navigationHistory.value = current + NavigationTrack(tabName)
-            android.util.Log.d("LunaCareNav", "Automatically tracked navigation event to tab: $tabName")
-        }
-    }
-
-    fun clearNavigationHistory() {
-        _navigationHistory.value = emptyList()
-    }
-
-    // ==========================================
-    // SYMPTOM LOGGING METHODS
-    // ==========================================
-    fun addSymptomLog(
-        date: String,
-        symptomName: String,
-        severity: Int,
-        notes: String? = null
-    ) {
-        viewModelScope.launch {
-            val log = SymptomLog(
-                date = date,
-                symptomName = symptomName,
-                severity = severity,
-                notes = notes
-            )
-            repository.insertSymptomLog(log)
-        }
-    }
-
-    fun deleteSymptomLog(id: Int) {
-        viewModelScope.launch {
-            repository.deleteSymptomLog(id)
+            _tempLat.value = null
+            _tempLng.value = null
         }
     }
 }
-
-data class NavigationTrack(
-    val tabName: String,
-    val timestamp: Long = System.currentTimeMillis()
-)

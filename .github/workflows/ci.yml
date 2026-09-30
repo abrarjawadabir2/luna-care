@@ -1,0 +1,210 @@
+name: LunaCare CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop, release/* ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  JAVA_VERSION: '17'
+
+jobs:
+  # ==========================================
+  # 1. LINT
+  # ==========================================
+  lint:
+    name: Android Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+      - name: Cache Gradle
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle.kts', '**/gradle-wrapper.properties') }}
+          restore-keys: gradle-
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+      - name: Run Lint
+        run: ./gradlew lint
+      - name: Upload lint results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lint-results
+          path: app/build/reports/lint-results-*.html
+
+  # ==========================================
+  # 2. UNIT TESTS
+  # ==========================================
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+      - name: Cache Gradle
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle.kts', '**/gradle-wrapper.properties') }}
+          restore-keys: gradle-
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+      - name: Run Unit Tests
+        run: ./gradlew test
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: app/build/reports/tests/
+
+  # ==========================================
+  # 3. SECURITY AUDIT
+  # ==========================================
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run Python security audit script
+        run: |
+          python scripts/audit_security.py --dry-run
+      - name: Check for hardcoded secrets
+        run: |
+          # Fail if any hardcoded password/key patterns are found in source
+          if grep -rn --include="*.kt" -E "(password|secret|api_key|apikey|hardcoded)" app/src/main/ \
+            | grep -v "securityPin" \
+            | grep -v "// " \
+            | grep -v "\.env" \
+            | grep -iE "=\s*\"[A-Za-z0-9+/]{8,}\""; then
+            echo "❌ Possible hardcoded secrets found!"
+            exit 1
+          fi
+          echo "✅ No hardcoded secrets detected"
+      - name: Verify no diagnosis claims in content
+        run: |
+          if grep -rn --include="*.kt" -iE "(you have PCOS|you are diagnosed|diagnose you)" app/src/main/; then
+            echo "❌ Potential diagnosis claim found — violates safety rules!"
+            exit 1
+          fi
+          echo "✅ No diagnosis claims found"
+      - name: Verify no medication dosage in content
+        run: |
+          if grep -rn --include="*.kt" -iE "(take [0-9]+ mg|dosage:|dose:|prescribed [0-9]+)" app/src/main/; then
+            echo "❌ Potential medication dosage found!"
+            exit 1
+          fi
+          echo "✅ No medication dosage found"
+      - name: Verify GPS coordinates not stored in Room entities
+        run: |
+          if grep -rn --include="*.kt" -E "(val lat|val lng|val latitude|val longitude|val coordinates)" \
+            app/src/main/java/com/example/data/Entities.kt; then
+            echo "❌ GPS coordinates found in Room entities — privacy violation!"
+            exit 1
+          fi
+          echo "✅ No GPS coordinates stored in entities"
+
+  # ==========================================
+  # 4. BUILD DEBUG APK
+  # ==========================================
+  build:
+    name: Build Debug APK
+    runs-on: ubuntu-latest
+    needs: [lint, test, security-audit]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+      - name: Cache Gradle
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle.kts', '**/gradle-wrapper.properties') }}
+          restore-keys: gradle-
+      - name: Create debug keystore
+        run: |
+          keytool -genkeypair -v -keystore debug.keystore -storepass android \
+            -alias androiddebugkey -keypass android \
+            -dname "CN=Debug,OU=Android,O=LunaCare,L=Unknown,S=Unknown,C=US" \
+            -validity 10000 -keyalg RSA -keysize 2048
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug
+        env:
+          STORE_PASSWORD: android
+          KEY_PASSWORD: android
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: lunacare-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
+  # ==========================================
+  # 5. RELEASE BUILD (main branch only)
+  # ==========================================
+  build-release:
+    name: Build Release APK
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+      - name: Cache Gradle
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle.kts', '**/gradle-wrapper.properties') }}
+          restore-keys: gradle-
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+      - name: Build Release APK
+        run: ./gradlew assembleRelease
+        env:
+          KEYSTORE_PATH: ${{ secrets.KEYSTORE_PATH || 'my-upload-key.jks' }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: lunacare-release-apk
+          path: app/build/outputs/apk/release/app-release.apk
+          retention-days: 30

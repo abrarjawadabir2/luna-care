@@ -1,18 +1,61 @@
-*.iml
-.gradle
-.kotlin
+# Built application files and artifacts
+*.apk
+*.aar
+*.aab
+*.dex
+*.class
+bin/
+gen/
+out/
+build/
+app/build/
+/build
+/captures
+
+# Gradle files
+.gradle/
+.kotlin/
+.kotlin-daemon/
+
+# Local configuration files
+local.properties
 /local.properties
+
+# Android Studio / IntelliJ IDEA
+*.iml
+.idea/
 /.idea/caches
 /.idea/libraries
 /.idea/modules.xml
 /.idea/workspace.xml
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
+
+# Native build
 .externalNativeBuild
-.cxx
-local.properties
+.cxx/
+
+# Node / JS dependencies and logs
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Antigravity IDE session logs & agent traces
+.antigravity/
+.agents/
+
+# OS files & logs
+.DS_Store
+Thumbs.db
+*.log
+*.hprof
+audit_report.json
+security_audit_report.json
+
+# Secrets & Keys
 .env
-debug.keystore
+*.env
+*.keystore
+!debug.keystore
+

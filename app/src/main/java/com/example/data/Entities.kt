@@ -3,6 +3,30 @@ package com.example.data
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
+// ==========================================
+// USER MODE ENUMS (stored as strings in DB)
+// ==========================================
+
+enum class UserMode { SELF_TRACKING, SUPPORT_MODE, EDUCATION_ONLY }
+enum class GenderMode { FEMALE, MALE, OTHER, PREFER_NOT_TO_SAY }
+enum class Pronoun { SHE_HER, HE_HIM, THEY_THEM, CUSTOM, PREFER_NOT_TO_SAY }
+enum class BodyRelevantMode { MENSTRUATES, DOES_NOT_MENSTRUATE, NOT_SURE, PREFER_NOT_TO_SAY }
+enum class SupportRelationship { WIFE, MOTHER, DAUGHTER, GIRLFRIEND, FEMALE_PARTNER, SISTER, FRIEND, OTHER }
+enum class Religion { ISLAM, HINDU, CHRISTIAN, BUDDHIST, OTHER, PREFER_NOT_TO_SAY }
+enum class LocationPrivacyMode { OFF, ON_DEVICE_ONLY, APPROXIMATE_REGION, TEMPORARY_EXACT }
+
+enum class BehaviourFocus {
+    MOOD, STRESS, ANXIETY, SLEEP, PERIOD_PAIN, PMS, PCOS_PCOD_AWARENESS,
+    PMOS_AWARENESS, MENSTRUAL_CUP, FOOD_CRAVINGS, HYDRATION, PRODUCT_CARE,
+    MEDICINE_REMINDER, DOCTOR_VISIT, RELATIONSHIP_SUPPORT, EMERGENCY_SIGNS
+}
+
+enum class UserRole { USER, PREMIUM_USER, MODERATOR, MEDICAL_CONTENT_REVIEWER, SUPPORT_AGENT, ADMIN, SUPER_ADMIN }
+
+// ==========================================
+// PROFILE ENTITY
+// ==========================================
+
 @Entity(tableName = "profile")
 data class Profile(
     @PrimaryKey val id: Int = 1,
@@ -12,6 +36,37 @@ data class Profile(
     val averagePeriodLength: Int = 5,
     val goals: List<String> = emptyList(),
     val acceptedDisclaimer: Boolean = false,
+
+    // User mode & identity
+    val userMode: String = UserMode.SELF_TRACKING.name,
+    val genderMode: String = GenderMode.PREFER_NOT_TO_SAY.name,
+    val pronoun: String = Pronoun.PREFER_NOT_TO_SAY.name,
+    val customPronoun: String? = null,
+    val bodyRelevantMode: String = BodyRelevantMode.PREFER_NOT_TO_SAY.name,
+
+    // Support mode
+    val supportRelationship: String? = null,
+    val consentConfirmed: Boolean = false,
+    val sharedTrackingConsent: Boolean = false,
+
+    // Region & culture
+    val religion: String? = null,
+    val country: String? = null,
+    val region: String? = null,
+    val city: String? = null,
+    val languagePreference: String? = null,
+
+    // Health self-reported awareness (NOT diagnosis)
+    val selectedConditions: List<String> = emptyList(),
+
+    // Behaviour focus
+    val behaviourFocuses: List<String> = emptyList(),
+
+    // Privacy & location
+    val locationPrivacyMode: String = LocationPrivacyMode.OFF.name,
+    val lastLocationPermissionStatus: String? = null,
+
+    // App preferences
     val isDarkMode: Boolean = false,
     val securityPinEnabled: Boolean = false,
     val securityPin: String = "",
@@ -20,183 +75,177 @@ data class Profile(
     val cupReminders: Boolean = false,
     val selfCareReminders: Boolean = true,
     val reminderTime: String = "20:00",
-    val userMode: String = "SELF_TRACKING", // SELF_TRACKING, SUPPORT_MODE, EDUCATION_ONLY
-    val genderMode: String = "FEMALE", // FEMALE, MALE, OTHER, PREFER_NOT_TO_SAY
-    val bodyRelevantMode: String = "MENSTRUATES", // MENSTRUATES, DOES_NOT_MENSTRUATE, NOT_SURE, PREFER_NOT_TO_SAY
-    val supportRelationship: String? = null, // WIFE, MOTHER, etc.
-    val consentConfirmed: Boolean = false,
-    val sharedTrackingConsent: Boolean = false,
-    val behaviourFocuses: List<String> = emptyList(),
-    val medicineReminders: Boolean = false,
-    val waterReminders: Boolean = true
+    val dashboardLayoutVersion: String = "new",
+    val visibleStatus: Boolean = true,
+
+    // Role (local stub; in full backend would be verified server-side)
+    val role: String = UserRole.USER.name,
+
+    // Premium / AI
+    val isPremium: Boolean = false,
+    val aiTokensUsedThisMonth: Int = 0,
+    val aiMessagesUsedThisMonth: Int = 0,
+    val aiCurrentMonth: String = ""
 )
 
-@Entity(tableName = "behaviour_logs")
-data class BehaviourLog(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val date: String, // YYYY-MM-DD
-    val mood: String, 
-    val stressLevel: Int, // 1-10
-    val anxietyLevel: Int, // 1-10
-    val sleepHours: Double,
-    val sleepQuality: Int, // 1-10
-    val painLevel: Int, // 0-10
-    val energyLevel: Int, // 1-10
-    val hydrationLevel: String, 
-    val foodCraving: String,
-    val caffeineIntake: String,
-    val movement: String,
-    val studyWorkPressure: Int, // 1-10
-    val relationshipStress: Int, // 1-10
-    val socialMediaOverload: Int, // 1-10
-    val flowLevel: String, // None, Light, Medium, Heavy
-    val symptoms: List<String>,
-    val notes: String?,
-    val flags: List<String>,
-    val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
-)
-
-@Entity(tableName = "cup_care_logs")
-data class CupCareLog(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val insertedAt: String, // e.g. "08:00"
-    val emptiedAt: String, // e.g. "16:00"
-    val cleanedToday: Boolean,
-    val discomfortLevel: Int, // 0-10
-    val leakageIssue: Boolean,
-    val notes: String?,
-    val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
-)
-
-@Entity(tableName = "support_notes")
-data class SupportNote(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val relationship: String,
-    val noteTitle: String,
-    val noteBody: String,
-    val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
-)
+// ==========================================
+// PERIOD LOG
+// ==========================================
 
 @Entity(tableName = "period_logs")
 data class PeriodLog(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val startDate: String, // YYYY-MM-DD
-    val endDate: String?,  // YYYY-MM-DD, nullable
-    val flowLevel: String, // Spotting, Light, Medium, Heavy, Very heavy
+    val startDate: String,       // YYYY-MM-DD
+    val endDate: String?,        // YYYY-MM-DD, nullable
+    val flowLevel: String,       // Spotting, Light, Medium, Heavy
     val symptoms: List<String>,
-    val notes: String?,
-    val painLevel: Int? = null,
-    val productUsed: String? = null,
-    val changedProductFrequency: String? = null
+    val notesEncrypted: String?  // AES-256 encrypted
 )
 
+// ==========================================
+// BEHAVIOUR / MOOD LOG
+// ==========================================
+
+@Entity(tableName = "behaviour_logs")
+data class BehaviourLog(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val logDate: String,            // YYYY-MM-DD
+    val mood: String,               // Great, Good, Okay, Low, Anxious, Overwhelmed, Very low
+    val stressLevel: Int,           // 0-10
+    val anxietyLevel: Int,          // 0-10
+    val sleepHours: Float,          // 0-12
+    val sleepQuality: Int,          // 0-10
+    val painLevel: Int,             // 0-10
+    val energyLevel: Int,           // 0-10
+    val hydrationLevel: String,     // Low, Okay, Good, Great
+    val foodCraving: String?,
+    val caffeineIntake: String?,    // None, Low, Medium, High
+    val movement: String?,          // None, Light walk, Yoga, Moderate, Intense
+    val studyWorkPressure: Int,     // 0-10
+    val relationshipStress: Int,    // 0-10
+    val socialMediaOverload: Int,   // 0-10
+    val flowLevel: String?,
+    val symptoms: List<String>,
+    val notesEncrypted: String?,    // AES-256 encrypted
+    val crisisFlag: Boolean = false,
+    val flags: List<String> = emptyList()
+)
+
+// Legacy alias for backward compat with existing ViewModel calls
 @Entity(tableName = "mood_logs")
 data class MoodLog(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val date: String, // YYYY-MM-DD
-    val mood: String, // Great, Good, Okay, Low, Very low, Anxious, Angry, Overwhelmed
-    val energy: Int,  // 1-10
-    val stress: Int,  // 1-10
-    val sleepQuality: Int?, // 1-10
+    val date: String,
+    val mood: String,
+    val energy: Int,
+    val stress: Int,
+    val sleepQuality: Int?,
     val notes: String?
 )
 
+// ==========================================
+// MEDICAL JOURNAL
+// ==========================================
+
+@Entity(tableName = "medical_journal_entries")
+data class MedicalJournalEntry(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val entryDate: String,          // YYYY-MM-DD
+    val category: String,           // e.g. "Symptom", "Doctor Visit", "Medication", "General"
+    val title: String,
+    val symptoms: List<String>,
+    val painLevel: Int,             // 0-10
+    val mood: String?,
+    val flowLevel: String?,
+    val medicinesTaken: String?,
+    val doctorVisit: Boolean = false,
+    val nextAppointment: String?,   // YYYY-MM-DD
+    val notesEncrypted: String?,    // AES-256 encrypted
+    val attachmentPath: String?     // local file path only
+)
+
+// Legacy journal entry for backward compat
 @Entity(tableName = "journal_entries")
 data class JournalEntry(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val date: String, // YYYY-MM-DD
+    val date: String,
     val title: String,
     val body: String,
     val moodTag: String?,
-    val cyclePhase: String?,
-    val category: String = "General",
-    val symptoms: String? = null
+    val cyclePhase: String?
 )
+
+// ==========================================
+// MEDICINE REMINDERS
+// ==========================================
+
+@Entity(tableName = "medical_reminders")
+data class MedicalReminder(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val title: String,
+    val reminderType: String,       // e.g. "Medication", "Supplement", "Doctor Appointment"
+    val reminderTime: String,       // HH:mm
+    val repeatRule: String,         // "Daily", "Weekly", "Once", "Custom"
+    val startDate: String,          // YYYY-MM-DD
+    val endDate: String?,           // YYYY-MM-DD
+    val enabled: Boolean = true,
+    val notesEncrypted: String?,    // AES-256 encrypted
+    val reasonNote: String?
+)
+
+// ==========================================
+// MENSTRUAL CUP CARE LOG
+// ==========================================
+
+@Entity(tableName = "cup_care_logs")
+data class CupCareLog(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val insertedAt: String?,        // ISO datetime
+    val emptiedAt: String?,         // ISO datetime
+    val cleanedToday: Boolean,
+    val discomfortLevel: Int,       // 0-10; if >=7 show safety warning
+    val leakageIssue: Boolean,
+    val notesEncrypted: String?,    // AES-256 encrypted
+    val logDate: String             // YYYY-MM-DD
+)
+
+// ==========================================
+// IN-APP NOTIFICATIONS
+// ==========================================
+
+@Entity(tableName = "in_app_notifications")
+data class InAppNotification(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val title: String,
+    val message: String,
+    val type: String,               // period, mood, medicine, cup, hydration, ai, system
+    val isRead: Boolean = false,
+    val createdAt: String          // ISO datetime
+)
+
+// ==========================================
+// AUDIT LOG (append-only, local)
+// ==========================================
+
+@Entity(tableName = "audit_logs")
+data class AuditLog(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val actorRole: String,          // USER, ADMIN, etc.
+    val action: String,             // read, insert, update, delete, export, login, logout
+    val resourceType: String,       // profile, period_log, behaviour_log, etc.
+    val resourceId: String?,
+    val ipHash: String?,            // SHA-256 hashed; never raw IP
+    val userAgentHash: String?,     // SHA-256 hashed
+    val metadata: String,           // JSON string, no decrypted content
+    val createdAt: String          // ISO datetime
+)
+
+// ==========================================
+// BOOKMARK (existing, unchanged)
+// ==========================================
 
 @Entity(tableName = "bookmarks")
 data class Bookmark(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val articleSlug: String
 )
-
-@Entity(tableName = "medical_journal_entries")
-data class MedicalJournalEntry(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val entryDate: String, // YYYY-MM-DD
-    val category: String, // Period, PMS, PCOS/PCOD, Menstrual cup, Medicine, Doctor visit, Mental health, Pain, Other
-    val title: String,
-    val notes: String = "",
-    val symptoms: List<String> = emptyList(),
-    val painLevel: Int = 0, // 0 to 10
-    val mood: String = "Okay",
-    val flowLevel: String = "None", // None, Spotting, Light, Medium, Heavy
-    val medicinesTaken: String = "",
-    val doctorVisit: Boolean = false,
-    val appointmentDate: String? = null,
-    val doctorAdvice: String? = null
-)
-
-@Entity(tableName = "medical_reminders")
-data class MedicalReminder(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val title: String,
-    val reminderType: String, // MEDICINE, DOCTOR_APPOINTMENT, WATER, CUP_CLEANING, PAD_CHANGE, SELF_CARE
-    val reminderTime: String, // HH:MM
-    val repeatRule: String = "Daily", // Daily, Weekly, Once
-    val enabled: Boolean = true,
-    val notes: String? = null,
-    val startDate: String? = null,
-    val endDate: String? = null
-)
-
-@Entity(tableName = "symptom_logs")
-data class SymptomLog(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val date: String, // YYYY-MM-DD
-    val symptomName: String, // Cramps, Headache, Fatigue, Bloating, Backache, Mood swings, Acne, Breast tenderness, Nausea, Insomnia, etc.
-    val severity: Int, // 1-5 or 1-10 (let's say 1-5 for standard severity)
-    val notes: String? = null
-)
-
-@Entity(tableName = "user_credentials")
-data class UserCredentials(
-    @PrimaryKey val emailHash: String, // SHA-256 lookup
-    val encryptedEmail: String,        // AES-GCM encrypted
-    val passwordHash: String,          // PBKDF2 Hmac SHA-256 hash
-    val passwordSalt: String,          // Unique salt per user
-    val displayName: String,
-    val role: String = "user", // user, premium_user, moderator, medical_content_reviewer, support_agent, admin, super_admin
-    val securityPinEnabled: Boolean = false,
-    val securityPin: String = "",
-    val isLoggedIn: Boolean = false,
-    val createdAt: Long = System.currentTimeMillis()
-)
-
-@Entity(tableName = "login_security_events")
-data class LoginSecurityEvent(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val emailHash: String?,
-    val ipHash: String?,
-    val userAgentHash: String?,
-    val eventType: String, // LOGIN_FAILED, LOGIN_SUCCESS, RATE_LIMIT_TRIGGERED, CAPTCHA_REQUIRED, PASSWORD_RESET_REQUESTED, PASSWORD_RESET_SUCCESS, ACCOUNT_LOCKED_TEMPORARILY
-    val metadata: String?, // serialized JSON or normal string
-    val createdAt: Long = System.currentTimeMillis()
-)
-
-@Entity(tableName = "account_security_state")
-data class AccountSecurityState(
-    @PrimaryKey val emailHash: String, // Key is emailHash
-    val userId: String? = null,
-    val failedAttemptCount: Int = 0,
-    val firstFailedAt: Long? = null,
-    val lastFailedAt: Long? = null,
-    val lockedUntil: Long? = null,
-    val captchaRequired: Boolean = false,
-    val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
-)
-
-

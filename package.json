@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@dietrichgebert/ponytail": "github:DietrichGebert/ponytail"
+  }
+}
