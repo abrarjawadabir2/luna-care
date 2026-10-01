@@ -2512,6 +2512,7 @@ fun HealthAwarenessScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
 // AI ASSISTANT SCREEN
 // ==========================================
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AiAssistantScreen(profile: Profile, viewModel: LunaViewModel, onBack: () -> Unit) {
     var userInput by remember { mutableStateOf("") }
