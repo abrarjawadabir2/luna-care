@@ -2,6 +2,7 @@ package com.example
 
 import com.example.data.*
 import com.example.data.CycleUtils
+import com.example.viewmodel.LunaViewModel
 import org.junit.Assert.*
 import org.junit.Test
 
