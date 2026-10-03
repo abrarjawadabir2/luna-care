@@ -91,7 +91,7 @@ jobs:
       - name: Run Lint
         run: ./gradlew lint
       - name: Upload lint results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: lint-results
@@ -123,7 +123,7 @@ jobs:
       - name: Run Unit Tests
         run: ./gradlew test
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-results
@@ -220,7 +220,7 @@ jobs:
           STORE_PASSWORD: android
           KEY_PASSWORD: android
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lunacare-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
@@ -258,7 +258,7 @@ jobs:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
       - name: Upload Release APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lunacare-release-apk
           path: app/build/outputs/apk/release/app-release.apk
