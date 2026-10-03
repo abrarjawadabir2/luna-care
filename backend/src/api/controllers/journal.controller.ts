@@ -3,6 +3,7 @@ import type { FastifyRequest, FastifyReply } from 'fastify';
 import { db } from '../../database/index.js';
 import { createMedicalJournalSchema } from '../schemas/index.js';
 import { requireOwnership } from '../middleware/auth.js';
+import { AuditService } from '../../audit/audit.service.js';
 
 export class JournalController {
   static async getMedicalJournals(request: FastifyRequest, reply: FastifyReply) {
@@ -34,6 +35,15 @@ export class JournalController {
       updatedAt: now
     });
 
+    await AuditService.recordEvent({
+      eventType: 'journal.entry.created',
+      userId,
+      requestId: request.requestId,
+      resourceType: 'journal_entry',
+      resourceId: record.id,
+      result: 'success'
+    });
+
     return reply.status(201).send(record);
   }
 
@@ -52,6 +62,17 @@ export class JournalController {
     }
 
     db.deleteMedicalJournal(entryId, existing.userId);
+
+    await AuditService.recordEvent({
+      eventType: 'journal.entry.deleted',
+      userId: existing.userId,
+      requestId: request.requestId,
+      resourceType: 'journal_entry',
+      resourceId: entryId,
+      result: 'success'
+    });
+
     return reply.status(200).send({ success: true, id: entryId });
   }
 }
+
