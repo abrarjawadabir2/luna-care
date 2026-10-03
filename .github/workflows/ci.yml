@@ -254,7 +254,7 @@ jobs:
       - name: Build Release APK
         run: ./gradlew assembleRelease
         env:
-          KEYSTORE_PATH: ${{ secrets.KEYSTORE_PATH || 'my-upload-key.jks' }}
+          KEYSTORE_PATH: ${{ secrets.KEYSTORE_PATH }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
       - name: Upload Release APK
