@@ -1,0 +1,18 @@
+[package]
+name = "file-inspector"
+version = "0.1.0"
+edition = "2021"
+authors = ["LunaCare Security Team"]
+description = "Hardened file inspector worker with strict magic byte and resource limits"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
