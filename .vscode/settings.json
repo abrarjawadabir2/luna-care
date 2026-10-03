@@ -1,9 +1,13 @@
 {
   "workbench.startupEditor": "readme",
   "files.associations": {
-    "*.sql": "postgres"
+    "*.sql": "postgres",
+    ".github/workflows/*.yml": "yaml"
   },
   "[yaml]": {
+    "editor.validate": false
+  },
+  "[github-actions-workflow]": {
     "editor.validate": false
   }
 }
