@@ -1,0 +1,36 @@
+version: 2
+updates:
+  # Android / Gradle dependencies
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      androidx:
+        patterns:
+          - "androidx.*"
+      compose:
+        patterns:
+          - "*compose*"
+
+  # Node.js backend dependencies
+  - package-ecosystem: "npm"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    groups:
+      fastify:
+        patterns:
+          - "*fastify*"
+
+  # Rust security worker dependencies
+  - package-ecosystem: "cargo"
+    directory: "/backend-rust"
+    schedule:
+      interval: "weekly"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
