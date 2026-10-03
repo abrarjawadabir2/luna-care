@@ -2,5 +2,8 @@
   "workbench.startupEditor": "readme",
   "files.associations": {
     "*.sql": "postgres"
+  },
+  "[yaml]": {
+    "editor.validate": false
   }
 }
