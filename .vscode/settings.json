@@ -1,3 +1,6 @@
 {
-  "workbench.startupEditor": "readme"
+  "workbench.startupEditor": "readme",
+  "files.associations": {
+    "*.sql": "postgres"
+  }
 }

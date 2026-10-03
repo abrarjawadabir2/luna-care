@@ -26,7 +26,7 @@ object LocationPrivacyManager {
         lat: Double? = null,
         lng: Double? = null
     ): String {
-        val encodedQuery = Uri.encode(query)
+        val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8").replace("+", "%20")
         return if (lat != null && lng != null) {
             "https://www.google.com/maps/search/$encodedQuery/@$lat,$lng,14z"
         } else {
