@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "policyName": "mcp-network-allowlist",
+  "description": "Defines permissible network egress and binding policies for MCP and local services.",
+  "bindings": {
+    "allowedHostBindings": [
+      "127.0.0.1",
+      "localhost"
+    ],
+    "deniedHostBindings": [
+      "0.0.0.0"
+    ]
+  },
+  "egress": {
+    "productionServices": [
+      "https://generativelanguage.googleapis.com",
+      "https://*.supabase.co"
+    ],
+    "developmentOnlyServices": [
+      "https://mcp.context7.com/mcp",
+      "https://registry.npmjs.org"
+    ],
+    "prohibitedDestinations": [
+      "0.0.0.0",
+      "http://*"
+    ]
+  },
+  "dataPrivacyRules": {
+    "allowHealthDataEgress": false,
+    "allowUserJournalEgress": false,
+    "allowCredentialEgress": false
+  }
+}

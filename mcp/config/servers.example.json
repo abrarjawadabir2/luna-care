@@ -1,0 +1,29 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@0.0.83"
+      ],
+      "env": {
+        "PLAYWRIGHT_HEADLESS": "true",
+        "PLAYWRIGHT_BROWSER": "chromium"
+      },
+      "comment": "Development and E2E testing only. Pinned to stable version. Restricted to localhost."
+    },
+    "context7": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "ctx7@latest",
+        "mcp"
+      ],
+      "remoteUrl": "https://mcp.context7.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${CONTEXT7_API_KEY}"
+      },
+      "comment": "Developer technical documentation search only. API key injected via local environment, never committed."
+    }
+  }
+}

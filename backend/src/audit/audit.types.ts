@@ -17,6 +17,8 @@ export type AuditEventType =
   | 'ai.request.accepted'
   | 'ai.request.rejected'
   | 'database.access.denied'
+  | 'journal.entry.created'
+  | 'journal.entry.deleted'
   | 'automation.job.started'
   | 'automation.job.completed'
   | 'automation.job.failed';
