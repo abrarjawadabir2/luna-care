@@ -360,4 +360,87 @@ describe('LunaCare Backend Security Boundaries & Threat Defenses', () => {
     // User B is intact
     assert.ok(db.getUserById(userB.user.id));
   });
+
+  // TEST 25: Search indexing protection via X-Robots-Tag
+  test('25. API responses include X-Robots-Tag: noindex header to prevent search engine indexing', async () => {
+    const res = await app.inject({ method: 'GET', url: '/healthz' });
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.headers['x-robots-tag'], 'noindex, nofollow, noarchive');
+
+    const authRes = await app.inject({ method: 'GET', url: '/api/v1/journal' });
+    assert.equal(authRes.headers['x-robots-tag'], 'noindex, nofollow, noarchive');
+  });
+
+  // TEST 26: Debug, dev, and environment dumping endpoints do not exist
+  test('26. Dangerous debug and environment dumping endpoints return 404', async () => {
+    const dangerousPaths = ['/debug', '/dev', '/env', '/config', '/internal/debug', '/heap', '/metrics'];
+    for (const p of dangerousPaths) {
+      const res = await app.inject({ method: 'GET', url: p });
+      assert.equal(res.statusCode, 404, `Path ${p} must not exist`);
+    }
+  });
+
+  // TEST 27: Private documentation repository boundaries
+  test('27. docs-private exists locally, is ignored by git, and is not tracked', async () => {
+    const { execSync } = await import('node:child_process');
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const rootDir = path.resolve(__dirname, '../..');
+
+    const docsPrivatePath = path.join(rootDir, 'docs-private');
+    assert.ok(fs.existsSync(docsPrivatePath), 'docs-private must exist locally');
+    assert.ok(fs.existsSync(path.join(docsPrivatePath, 'PRD.md')), 'docs-private/PRD.md must exist');
+    assert.ok(fs.existsSync(path.join(docsPrivatePath, 'SECURITY.md')), 'docs-private/SECURITY.md must exist');
+
+    // Verify git ls-files does not track docs-private
+    const trackedDocs = execSync('git ls-files docs-private', { cwd: rootDir, encoding: 'utf8' }).trim();
+    assert.equal(trackedDocs, '', 'docs-private must NOT be tracked by git');
+
+    // Verify .gitignore includes docs-private
+    const gitignoreContent = fs.readFileSync(path.join(rootDir, '.gitignore'), 'utf8');
+    assert.ok(gitignoreContent.includes('docs-private/'), '.gitignore must ignore docs-private/');
+  });
+
+  // TEST 28: Android packaging boundaries
+  test('28. docs-private is outside Android assets and resources', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const rootDir = path.resolve(__dirname, '../..');
+
+    const androidAssets = path.join(rootDir, 'app/src/main/assets');
+    const androidRaw = path.join(rootDir, 'app/src/main/res/raw');
+
+    if (fs.existsSync(androidAssets)) {
+      const assetFiles = fs.readdirSync(androidAssets);
+      assert.equal(assetFiles.includes('docs-private'), false, 'docs-private must not be in assets');
+    }
+    if (fs.existsSync(androidRaw)) {
+      const rawFiles = fs.readdirSync(androidRaw);
+      assert.equal(rawFiles.includes('docs-private'), false, 'docs-private must not be in res/raw');
+    }
+  });
+
+  // TEST 29: Secret and configuration tracking isolation
+  test('29. Real credentials and local configs are excluded from git tracking', async () => {
+    const { execSync } = await import('node:child_process');
+    const path = await import('node:path');
+    const rootDir = path.resolve(__dirname, '../..');
+
+    const trackedSecrets = execSync('git ls-files "*.jks" "local.properties" ".env" "backend/.env"', { cwd: rootDir, encoding: 'utf8' }).trim();
+    assert.equal(trackedSecrets, '', 'Local secrets and configs must never be tracked in git');
+  });
+
+  // TEST 30: MCP example configuration contains zero committed credentials
+  test('30. MCP configuration examples contain only placeholders and environment references', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const rootDir = path.resolve(__dirname, '../..');
+    const mcpServersFile = path.join(rootDir, 'mcp/config/servers.example.json');
+
+    assert.ok(fs.existsSync(mcpServersFile), 'mcp/config/servers.example.json must exist');
+    const content = fs.readFileSync(mcpServersFile, 'utf8');
+    assert.equal(content.includes('AIza'), false, 'MCP config must not contain AIza keys');
+    assert.equal(content.includes('ghp_'), false, 'MCP config must not contain GitHub tokens');
+    assert.ok(content.includes('${CONTEXT7_API_KEY}'), 'MCP config must use environment variable interpolation');
+  });
 });
