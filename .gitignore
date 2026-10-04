@@ -53,16 +53,36 @@ Thumbs.db
 audit_report.json
 security_audit_report.json
 
+# LunaCare private engineering documentation
+docs-private/
+docs-private/**
+
 # Secrets & Keys
 .env
+.env.*
 *.env
+!.env.example
 backend/.env
 backend-rust/.env
 *.keystore
 !debug.keystore
+*.jks
+
+# MCP and local secret configs
+.mcp.local.json
+mcp.local.json
+mcp/config/local.json
+.antigravity/local.json
+.antigravity/secrets.json
+
+# Test & Playwright artifacts
+playwright-report/
+test-results/
+.artifacts/
 
 # Backend & Rust builds
 backend/dist/
 backend-rust/target/
 coverage/
+
 

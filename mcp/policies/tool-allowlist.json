@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "policyName": "mcp-tool-allowlist",
+  "description": "Defines explicit tool capabilities permitted in LunaCare development environment.",
+  "defaultAction": "deny",
+  "allowedTools": [
+    "get_public_seo_status",
+    "get_build_status",
+    "get_dependency_status",
+    "get_test_result",
+    "playwright_navigate",
+    "playwright_screenshot",
+    "playwright_click",
+    "playwright_fill",
+    "context7_resolve_docs"
+  ],
+  "deniedTools": [
+    "execute_shell",
+    "read_any_file",
+    "write_any_file",
+    "query_any_sql",
+    "fetch_any_url",
+    "run_arbitrary_code",
+    "dump_environment",
+    "export_database",
+    "reveal_secrets"
+  ],
+  "enforcement": {
+    "readOnlyByDefault": true,
+    "requireConfirmationForWrites": true,
+    "blockDirectMainBranchPush": true
+  }
+}
