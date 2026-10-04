@@ -53,7 +53,13 @@ export async function buildApp(): Promise<FastifyInstance> {
   // 3. Request ID middleware
   app.addHook('onRequest', requestIdMiddleware);
 
-  // 4. Safe Error Handler
+  // 4. API Search Indexing Protection (X-Robots-Tag)
+  app.addHook('onSend', async (_req, reply, payload) => {
+    reply.header('x-robots-tag', 'noindex, nofollow, noarchive');
+    return payload;
+  });
+
+  // 5. Safe Error Handler
   app.setErrorHandler(errorHandler);
 
   // 5. Health Check endpoints
