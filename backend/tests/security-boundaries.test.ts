@@ -381,28 +381,34 @@ describe('LunaCare Backend Security Boundaries & Threat Defenses', () => {
   });
 
   // TEST 27: Private documentation repository boundaries
-  test('27. docs-private exists locally, is ignored by git, and is not tracked', async () => {
+  test('27. Private documentation (docs-private and docs/private) exists locally, is ignored by git, and is not tracked', async () => {
     const { execSync } = await import('node:child_process');
     const fs = await import('node:fs');
     const path = await import('node:path');
     const rootDir = path.resolve(__dirname, '../..');
 
     const docsPrivatePath = path.join(rootDir, 'docs-private');
+    const docsInDocsPath = path.join(rootDir, 'docs/private');
+
     assert.ok(fs.existsSync(docsPrivatePath), 'docs-private must exist locally');
-    assert.ok(fs.existsSync(path.join(docsPrivatePath, 'PRD.md')), 'docs-private/PRD.md must exist');
-    assert.ok(fs.existsSync(path.join(docsPrivatePath, 'SECURITY.md')), 'docs-private/SECURITY.md must exist');
+    assert.ok(fs.existsSync(docsInDocsPath), 'docs/private must exist locally');
+    assert.ok(fs.existsSync(path.join(docsInDocsPath, 'PRD.md')), 'docs/private/PRD.md must exist');
+    assert.ok(fs.existsSync(path.join(docsInDocsPath, 'SECURITY.md')), 'docs/private/SECURITY.md must exist');
 
-    // Verify git ls-files does not track docs-private
-    const trackedDocs = execSync('git ls-files docs-private', { cwd: rootDir, encoding: 'utf8' }).trim();
-    assert.equal(trackedDocs, '', 'docs-private must NOT be tracked by git');
+    // Verify git ls-files does not track private docs
+    const trackedDocs1 = execSync('git ls-files docs-private', { cwd: rootDir, encoding: 'utf8' }).trim();
+    assert.equal(trackedDocs1, '', 'docs-private must NOT be tracked by git');
+    const trackedDocs2 = execSync('git ls-files docs/private', { cwd: rootDir, encoding: 'utf8' }).trim();
+    assert.equal(trackedDocs2, '', 'docs/private must NOT be tracked by git');
 
-    // Verify .gitignore includes docs-private
+    // Verify .gitignore includes private documentation entries
     const gitignoreContent = fs.readFileSync(path.join(rootDir, '.gitignore'), 'utf8');
     assert.ok(gitignoreContent.includes('docs-private/'), '.gitignore must ignore docs-private/');
+    assert.ok(gitignoreContent.includes('docs/private/'), '.gitignore must ignore docs/private/');
   });
 
   // TEST 28: Android packaging boundaries
-  test('28. docs-private is outside Android assets and resources', async () => {
+  test('28. Private documentation is outside Android assets and resources', async () => {
     const fs = await import('node:fs');
     const path = await import('node:path');
     const rootDir = path.resolve(__dirname, '../..');
@@ -413,10 +419,12 @@ describe('LunaCare Backend Security Boundaries & Threat Defenses', () => {
     if (fs.existsSync(androidAssets)) {
       const assetFiles = fs.readdirSync(androidAssets);
       assert.equal(assetFiles.includes('docs-private'), false, 'docs-private must not be in assets');
+      assert.equal(assetFiles.includes('docs'), false, 'docs must not be in assets');
     }
     if (fs.existsSync(androidRaw)) {
       const rawFiles = fs.readdirSync(androidRaw);
       assert.equal(rawFiles.includes('docs-private'), false, 'docs-private must not be in res/raw');
+      assert.equal(rawFiles.includes('docs'), false, 'docs must not be in res/raw');
     }
   });
 
