@@ -40,10 +40,11 @@ export async function buildApp(): Promise<FastifyInstance> {
       // Allow requests with no origin (mobile apps, server-to-server)
       if (!origin) return cb(null, true);
       const allowed = env.CORS_ORIGIN.split(',').map(s => s.trim());
-      if (allowed.includes(origin) || allowed.includes('*')) {
+      const isDevLocal = env.NODE_ENV !== 'production' && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+      if (allowed.includes(origin) || allowed.includes('*') || isDevLocal) {
         cb(null, true);
       } else {
-        cb(new Error('Not allowed by CORS'), false);
+        cb(null, false);
       }
     },
     credentials: true,

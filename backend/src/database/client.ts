@@ -56,8 +56,20 @@ export interface ProfileRecord {
   averagePeriodLength: number;
   aiMessagesUsedThisMonth: number;
   aiCurrentMonth: string;
+  username?: string | null;
+  username_normalized?: string | null;
+  username_updated_at?: string | null;
+  avatar?: string | null;
+  bio?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface UsernameReservationRecord {
+  username_normalized: string;
+  originalUserId: string;
+  reservedUntil: number;
+  createdAt: number;
 }
 
 export interface PeriodLogRecord {
@@ -154,6 +166,8 @@ class InMemoryDatabase {
   private otps: Map<string, OtpRecord> = new Map();
   private uploads: Map<string, UploadRecord> = new Map();
   private deletionQueue: Set<string> = new Set();
+  private usernameIndex: Map<string, string> = new Map(); // username_normalized -> userId
+  private usernameReservations: Map<string, UsernameReservationRecord> = new Map(); // username_normalized -> reservation
 
   // Reset database (for test isolation)
   reset() {
@@ -166,6 +180,8 @@ class InMemoryDatabase {
     this.otps.clear();
     this.uploads.clear();
     this.deletionQueue.clear();
+    this.usernameIndex.clear();
+    this.usernameReservations.clear();
   }
 
   // --- USERS & AUTH ---
@@ -208,10 +224,22 @@ class InMemoryDatabase {
   }
 
   deleteUser(id: string): boolean {
+    const profile = this.profiles.get(id);
+    if (profile?.username_normalized) {
+      this.usernameIndex.delete(profile.username_normalized);
+      this.usernameReservations.delete(profile.username_normalized);
+    }
+    // Clean up any historical reservations belonging to this user
+    for (const [k, v] of this.usernameReservations.entries()) {
+      if (v.originalUserId === id) {
+        this.usernameReservations.delete(k);
+      }
+    }
+
     const existed = this.users.delete(id);
     this.profiles.delete(id);
     this.deletionQueue.delete(id);
-    // Cascade delete user data
+    // Cascade delete user data (strictly by immutable internal user id)
     for (const [k, v] of this.periodLogs.entries()) {
       if (v.userId === id) this.periodLogs.delete(k);
     }
@@ -241,15 +269,141 @@ class InMemoryDatabase {
     return count;
   }
 
-  // --- PROFILES ---
+  // --- PROFILES & USERNAMES ---
   getProfile(userId: string): ProfileRecord | null {
     const p = this.profiles.get(userId);
     return p ? { ...p } : null;
   }
 
   saveProfile(profile: ProfileRecord): ProfileRecord {
+    if (profile.username_normalized) {
+      this.usernameIndex.set(profile.username_normalized, profile.id);
+    }
     this.profiles.set(profile.id, { ...profile });
     return { ...profile };
+  }
+
+  /**
+   * Atomic username claim and change handling
+   * Enforces global uniqueness, 30-day reassignment hold, and 14-day change cooldown
+   */
+  claimUsername(
+    userId: string,
+    rawUsername: string,
+    normalized: string,
+    options?: { skipCooldown?: boolean }
+  ): { success: boolean; reason?: 'USERNAME_NOT_AVAILABLE' | 'USERNAME_CHANGE_LIMITED' } {
+    // 1. Check if currently claimed by another user
+    const currentOwner = this.usernameIndex.get(normalized);
+    if (currentOwner && currentOwner !== userId) {
+      return { success: false, reason: 'USERNAME_NOT_AVAILABLE' };
+    }
+
+    // 2. Check 30-day reassignment reservation (Option B, Req 96)
+    const res = this.usernameReservations.get(normalized);
+    if (res && res.reservedUntil > Date.now() && res.originalUserId !== userId) {
+      return { success: false, reason: 'USERNAME_NOT_AVAILABLE' };
+    }
+
+    // 3. User profile verification
+    const profile = this.profiles.get(userId);
+    if (!profile) {
+      return { success: false, reason: 'USERNAME_NOT_AVAILABLE' };
+    }
+
+    // 4. Changing to a different normalized username
+    if (profile.username_normalized && profile.username_normalized !== normalized) {
+      // Cooldown check (Req 95: Optional - do not implement unless product requirements accept it)
+      const enableCooldown = process.env['ENABLE_USERNAME_COOLDOWN'] === 'true';
+      if (enableCooldown && !options?.skipCooldown && profile.username_updated_at) {
+        const lastUpdated = new Date(profile.username_updated_at).getTime();
+        const fourteenDaysMs = 14 * 24 * 60 * 60 * 1000;
+        if (Date.now() - lastUpdated < fourteenDaysMs) {
+          return { success: false, reason: 'USERNAME_CHANGE_LIMITED' };
+        }
+      }
+
+      // Reserve old username for 30 days for this user (anti-impersonation)
+      const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+      this.usernameReservations.set(profile.username_normalized, {
+        username_normalized: profile.username_normalized,
+        originalUserId: userId,
+        reservedUntil: Date.now() + thirtyDaysMs,
+        createdAt: Date.now()
+      });
+
+      // Free previous username from active index
+      this.usernameIndex.delete(profile.username_normalized);
+    }
+
+    // 5. Atomic index assignment
+    this.usernameIndex.set(normalized, userId);
+    this.usernameReservations.delete(normalized);
+
+    const now = new Date().toISOString();
+    profile.username = rawUsername;
+    profile.username_normalized = normalized;
+    profile.username_updated_at = now;
+    profile.updatedAt = now;
+    this.profiles.set(userId, { ...profile });
+
+    return { success: true };
+  }
+
+  /**
+   * Check if a normalized username is available to register/claim
+   */
+  isUsernameAvailable(normalized: string, requestingUserId?: string): { available: boolean; reason?: 'USERNAME_NOT_AVAILABLE' } {
+    const currentOwner = this.usernameIndex.get(normalized);
+    if (currentOwner && currentOwner !== requestingUserId) {
+      return { available: false, reason: 'USERNAME_NOT_AVAILABLE' };
+    }
+
+    const res = this.usernameReservations.get(normalized);
+    if (res && res.reservedUntil > Date.now() && res.originalUserId !== requestingUserId) {
+      return { available: false, reason: 'USERNAME_NOT_AVAILABLE' };
+    }
+
+    return { available: true };
+  }
+
+  /**
+   * Direct lookup by normalized username using the index (Req 98)
+   */
+  getProfileByUsernameNormalized(normalized: string): ProfileRecord | null {
+    const userId = this.usernameIndex.get(normalized);
+    if (!userId) return null;
+    const p = this.profiles.get(userId);
+    return p ? { ...p } : null;
+  }
+
+  /**
+   * Safe public profile lookup: returns only allowlisted public fields
+   * NEVER returns private health data, internal user ID, email, or credentials (Req 91, 92, 99)
+   */
+  getPublicProfileByUsername(rawOrNormalized: string): { username: string; displayName: string; avatar: string | null; publicBio: string | null } | null {
+    const normalized = rawOrNormalized.trim().replace(/^@/, '').normalize('NFKC').toLowerCase();
+    const p = this.getProfileByUsernameNormalized(normalized);
+    if (!p || !p.username) return null;
+    return {
+      username: p.username,
+      displayName: p.displayName,
+      avatar: p.avatar || null,
+      publicBio: p.bio || null
+    };
+  }
+
+  /**
+   * Inspect existing database unique constraints/indexes (Req 98, 105)
+   */
+  getIndexes(): string[] {
+    return [
+      'profiles_username_normalized_idx',
+      'users_email_idx',
+      'users_phone_idx',
+      'period_logs_user_id_idx',
+      'behaviour_logs_user_id_log_date_idx'
+    ];
   }
 
   // --- PERIOD LOGS ---

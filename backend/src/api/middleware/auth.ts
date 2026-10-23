@@ -85,6 +85,32 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply) 
   }
 }
 
+export async function optionalAuth(request: FastifyRequest, _reply: FastifyReply) {
+  const authHeader = request.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return;
+  }
+
+  const token = authHeader.substring(7).trim();
+  const env = getEnv();
+
+  try {
+    const decoded = jwt.verify(token, env.JWT_SECRET, {
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE
+    }) as TokenPayload;
+
+    request.user = {
+      id: decoded.sub,
+      email: decoded.email,
+      role: decoded.role,
+      isPremium: decoded.isPremium
+    };
+  } catch {
+    // If optional token is invalid, simply proceed as unauthenticated
+  }
+}
+
 export function requireRole(allowedRoles: UserRole[]) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.user) {

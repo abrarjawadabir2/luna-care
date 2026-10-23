@@ -233,6 +233,62 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ==============================
+    // USERNAME AVAILABILITY STATE & VALIDATION (Req 78, 85, 107, 108)
+    // ==============================
+
+    sealed class UsernameAvailabilityState {
+        object Idle : UsernameAvailabilityState()
+        object Checking : UsernameAvailabilityState()
+        data class Available(val username: String) : UsernameAvailabilityState()
+        data class Unavailable(val reason: String = "Username is not available.") : UsernameAvailabilityState()
+        data class Invalid(val message: String) : UsernameAvailabilityState()
+    }
+
+    private val _usernameState = MutableStateFlow<UsernameAvailabilityState>(UsernameAvailabilityState.Idle)
+    val usernameState: StateFlow<UsernameAvailabilityState> = _usernameState.asStateFlow()
+
+    data class UsernameValidationResult(
+        val isValid: Boolean,
+        val cleaned: String = "",
+        val normalized: String = "",
+        val message: String = ""
+    )
+
+    fun validateLocalUsername(raw: String): UsernameValidationResult {
+        var cleaned = raw.trim()
+        if (cleaned.startsWith("@")) cleaned = cleaned.substring(1)
+
+        if (cleaned.length < 3 || cleaned.length > 30) {
+            return UsernameValidationResult(false, message = "Username must contain 3–30 characters.")
+        }
+
+        val allowedRegex = Regex("^[a-zA-Z0-9_.-]+$")
+        if (!allowedRegex.matches(cleaned)) {
+            return UsernameValidationResult(false, message = "Only letters, numbers, periods, hyphens, and underscores are allowed.")
+        }
+
+        if (cleaned.startsWith(".") || cleaned.startsWith("_") || cleaned.startsWith("-")) {
+            return UsernameValidationResult(false, message = "Username cannot start with a period, hyphen, or underscore.")
+        }
+
+        if (cleaned.endsWith(".") || cleaned.endsWith("_") || cleaned.endsWith("-")) {
+            return UsernameValidationResult(false, message = "Username cannot end with a period, hyphen, or underscore.")
+        }
+
+        if (Regex("[-._]{2,}").containsMatchIn(cleaned)) {
+            return UsernameValidationResult(false, message = "Username cannot contain consecutive periods, hyphens, or underscores.")
+        }
+
+        val normalized = cleaned.lowercase()
+        val reserved = setOf("admin", "lunacare", "support", "official", "security", "api", "root", "system", "help", "settings")
+        if (reserved.contains(normalized)) {
+            return UsernameValidationResult(false, message = "Username is not available.")
+        }
+
+        return UsernameValidationResult(true, cleaned = cleaned, normalized = normalized)
+    }
+
     fun updateProfileIdentity(
         displayName: String,
         pronoun: String,
@@ -242,12 +298,19 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
         country: String?,
         region: String?,
         city: String?,
-        behaviourFocuses: List<String>
+        behaviourFocuses: List<String>,
+        username: String? = null
     ) {
         viewModelScope.launch {
             val current = repository.getProfileSync() ?: Profile()
+            val updatedUsername = username?.trim()?.ifBlank { null } ?: current.username
+            val normalized = updatedUsername?.trim()?.removePrefix("@")?.lowercase()
+            val now = LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME)
             repository.saveProfile(current.copy(
                 displayName = displayName,
+                username = updatedUsername,
+                usernameNormalized = normalized,
+                usernameUpdatedAt = if (updatedUsername != current.username) now else current.usernameUpdatedAt,
                 pronoun = pronoun,
                 customPronoun = customPronoun,
                 genderMode = genderMode,

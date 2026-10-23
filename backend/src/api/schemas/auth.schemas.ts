@@ -4,7 +4,8 @@ export const registerSchema = z.object({
   email: z.string().email().max(255),
   password: z.string().min(8, 'Password must be at least 8 characters').max(128),
   displayName: z.string().min(1).max(100),
-  phone: z.string().regex(/^\+?[1-9]\d{1,14}$/, 'Invalid international phone number').optional()
+  phone: z.string().regex(/^\+?[1-9]\d{1,14}$/, 'Invalid international phone number').optional(),
+  username: z.string().min(3).max(30).optional()
 }).strict(); // Reject unexpected fields
 
 export const loginSchema = z.object({
