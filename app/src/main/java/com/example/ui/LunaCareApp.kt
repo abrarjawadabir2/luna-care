@@ -2814,12 +2814,128 @@ fun BookmarksScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
 }
 
 // ==========================================
+// USERNAME INPUT FIELD (Req 85, 107, 108)
+// ==========================================
+
+@Composable
+fun UsernameInputField(
+    currentUsername: String?,
+    onUsernameValidChange: (String?) -> Unit,
+    viewModel: LunaViewModel,
+    modifier: Modifier = Modifier
+) {
+    var rawText by remember { mutableStateOf(currentUsername ?: "") }
+    var statusState by remember { mutableStateOf("IDLE") } // IDLE, CHECKING, AVAILABLE, UNAVAILABLE, INVALID, TYPING
+    var statusMessage by remember { mutableStateOf("") }
+
+    // Coroutine debounce 400ms for availability check (Req 85)
+    LaunchedEffect(rawText) {
+        val trimmed = rawText.trim().removePrefix("@")
+        if (trimmed.isBlank()) {
+            statusState = "IDLE"
+            statusMessage = ""
+            onUsernameValidChange(null)
+            return@LaunchedEffect
+        }
+
+        // Fast local formatting validation
+        val validation = viewModel.validateLocalUsername(trimmed)
+        if (!validation.isValid) {
+            if (trimmed.length < 3) {
+                statusState = "TYPING"
+                statusMessage = "Username must contain 3–30 characters."
+            } else {
+                statusState = "INVALID"
+                statusMessage = validation.message
+            }
+            onUsernameValidChange(null)
+            return@LaunchedEffect
+        }
+
+        // Show checking state
+        statusState = "CHECKING"
+        statusMessage = "Checking username availability..."
+
+        // Debounce 400ms (Req 85: 300-500 ms)
+        kotlinx.coroutines.delay(400)
+
+        // Check if unchanged from existing username
+        if (currentUsername != null && trimmed.equals(currentUsername.removePrefix("@"), ignoreCase = true)) {
+            statusState = "AVAILABLE"
+            statusMessage = "Username is available."
+            onUsernameValidChange(trimmed)
+            return@LaunchedEffect
+        }
+
+        // Check availability against reserved and local rules
+        val reserved = setOf("admin", "lunacare", "support", "official", "security", "api", "root", "system", "help", "settings")
+        if (reserved.contains(validation.normalized)) {
+            statusState = "UNAVAILABLE"
+            statusMessage = "Username is not available."
+            onUsernameValidChange(null)
+        } else {
+            statusState = "AVAILABLE"
+            statusMessage = "Username is available."
+            onUsernameValidChange(trimmed)
+        }
+    }
+
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Username", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold))
+        OutlinedTextField(
+            value = rawText,
+            onValueChange = { input ->
+                rawText = input.replace(" ", "")
+            },
+            prefix = { Text("@", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)) },
+            placeholder = { Text("username") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().testTag("username_input_field"),
+            trailingIcon = {
+                when (statusState) {
+                    "CHECKING" -> CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    "AVAILABLE" -> Icon(Icons.Default.CheckCircle, contentDescription = "Username is available", tint = Color(0xFF2E7D32))
+                    "UNAVAILABLE", "INVALID" -> Icon(Icons.Default.Cancel, contentDescription = "Username unavailable", tint = MaterialTheme.colorScheme.error)
+                    else -> {}
+                }
+            }
+        )
+
+        // Accessible Status Text (Icon + text + color, Req 108)
+        if (statusMessage.isNotBlank()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(start = 4.dp, top = 2.dp)
+            ) {
+                val textColor = when (statusState) {
+                    "AVAILABLE" -> Color(0xFF2E7D32)
+                    "UNAVAILABLE", "INVALID" -> MaterialTheme.colorScheme.error
+                    "CHECKING" -> MaterialTheme.colorScheme.onSurfaceVariant
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                }
+
+                Text(
+                    text = when (statusState) {
+                        "AVAILABLE" -> "✓ $statusMessage"
+                        else -> statusMessage
+                    },
+                    style = MaterialTheme.typography.bodySmall.copy(color = textColor),
+                    modifier = Modifier.testTag("username_status_text")
+                )
+            }
+        }
+    }
+}
+
+// ==========================================
 // PROFILE EDIT
 // ==========================================
 
 @Composable
 fun ProfileEditScreen(profile: Profile, viewModel: LunaViewModel, onBack: () -> Unit) {
     var displayName by remember { mutableStateOf(profile.displayName) }
+    var selectedUsername by remember { mutableStateOf(profile.username ?: "") }
     var pronoun by remember { mutableStateOf(profile.pronoun) }
     var customPronoun by remember { mutableStateOf(profile.customPronoun ?: "") }
     var genderMode by remember { mutableStateOf(profile.genderMode) }
@@ -2836,12 +2952,32 @@ fun ProfileEditScreen(profile: Profile, viewModel: LunaViewModel, onBack: () -> 
                     Text("Edit Profile", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
                 }
                 Button(onClick = {
-                    viewModel.updateProfileIdentity(displayName, pronoun, customPronoun.ifBlank { null }, genderMode, religion, country.ifBlank { null }, region.ifBlank { null }, city.ifBlank { null }, profile.behaviourFocuses)
+                    viewModel.updateProfileIdentity(
+                        displayName,
+                        pronoun,
+                        customPronoun.ifBlank { null },
+                        genderMode,
+                        religion,
+                        country.ifBlank { null },
+                        region.ifBlank { null },
+                        city.ifBlank { null },
+                        profile.behaviourFocuses,
+                        selectedUsername.ifBlank { null }
+                    )
                     onBack()
                 }) { Text("Save") }
             }
         }
-        item { OutlinedTextField(value = displayName, onValueChange = { displayName = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
+        item {
+            OutlinedTextField(value = displayName, onValueChange = { displayName = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+        }
+        item {
+            UsernameInputField(
+                currentUsername = profile.username,
+                onUsernameValidChange = { selectedUsername = it ?: "" },
+                viewModel = viewModel
+            )
+        }
         item {
             OnboardingOptionGroup(
                 label = "Pronouns",

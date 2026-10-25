@@ -22,7 +22,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AuditLog::class,
         Bookmark::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -192,6 +192,16 @@ abstract class LunaDatabase : RoomDatabase() {
             }
         }
 
+        // Migration from version 2 → 3: unique username fields
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE profile ADD COLUMN username TEXT")
+                db.execSQL("ALTER TABLE profile ADD COLUMN usernameNormalized TEXT")
+                db.execSQL("ALTER TABLE profile ADD COLUMN usernameUpdatedAt TEXT")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_profile_usernameNormalized ON profile(usernameNormalized)")
+            }
+        }
+
         fun getDatabase(context: Context): LunaDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -199,7 +209,7 @@ abstract class LunaDatabase : RoomDatabase() {
                     LunaDatabase::class.java,
                     "luna_database"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                 INSTANCE = instance
                 instance

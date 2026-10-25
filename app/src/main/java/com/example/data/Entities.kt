@@ -85,7 +85,12 @@ data class Profile(
     val isPremium: Boolean = false,
     val aiTokensUsedThisMonth: Int = 0,
     val aiMessagesUsedThisMonth: Int = 0,
-    val aiCurrentMonth: String = ""
+    val aiCurrentMonth: String = "",
+
+    // Unique Username System (Req 78)
+    val username: String? = null,
+    val usernameNormalized: String? = null,
+    val usernameUpdatedAt: String? = null
 )
 
 // ==========================================

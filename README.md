@@ -232,6 +232,7 @@ cd backend-rust && cargo test
 - **Defense in Depth:** Every request to sensitive endpoints requires verified authentication, server-side authorization checks, and database-level Row-Level Security (RLS).
 - **Constant-Time Verification:** Login, registration, and OTP verification endpoints return uniform error codes to prevent user account enumeration.
 - **Search Engine Blocking:** All API endpoints and authenticated surfaces emit `X-Robots-Tag: noindex, nofollow, noarchive` headers.
+- **Vulnerability Reporting & Policy:** For responsible disclosure guidelines, triage SLAs, and supported versions, see our [Security Policy](SECURITY.md).
 
 ---
 

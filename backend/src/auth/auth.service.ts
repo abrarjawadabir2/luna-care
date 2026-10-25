@@ -7,8 +7,8 @@ import { AuditService } from '../audit/audit.service.js';
 import { logger } from '../utils/logger.js';
 
 export class AuthService {
-  // 1. REGISTER
-  static async register(input: { email: string; password: string; displayName: string; phone?: string }) {
+  // 1. REGISTER (Req 103: Support optional username claim at signup without losing account)
+  static async register(input: { email: string; password: string; displayName: string; phone?: string; username?: string }) {
     const existing = db.getUserByEmail(input.email);
     if (existing) {
       throw new Error('EMAIL_ALREADY_EXISTS');
@@ -53,6 +53,27 @@ export class AuthService {
     db.createUser(user);
     db.saveProfile(profile);
 
+    // If username is part of signup (Req 103), attempt claim without failing account creation
+    let claimedUsername: string | null = null;
+    if (input.username) {
+      const { validateUsername } = await import('../utils/username.js');
+      const validation = validateUsername(input.username);
+      if (validation.valid && validation.rawUsername && validation.normalized) {
+        const claim = db.claimUsername(userId, validation.rawUsername, validation.normalized);
+        if (claim.success) {
+          claimedUsername = validation.rawUsername;
+          await AuditService.recordEvent({
+            eventType: 'user.username.claimed',
+            userId,
+            resourceType: 'username',
+            resourceId: validation.normalized,
+            result: 'success',
+            metadata: { action: 'signup_claim', usernameLength: validation.normalized.length }
+          });
+        }
+      }
+    }
+
     await AuditService.recordEvent({
       eventType: 'auth.login.success',
       userId,
@@ -69,6 +90,7 @@ export class AuthService {
         id: user.id,
         email: user.email,
         displayName: profile.displayName,
+        username: claimedUsername,
         role: user.role,
         isPremium: user.isPremium
       },
@@ -123,6 +145,7 @@ export class AuthService {
         id: user.id,
         email: user.email,
         displayName: profile?.displayName || 'User',
+        username: profile?.username || null,
         role: user.role,
         isPremium: user.isPremium
       },
