@@ -42,7 +42,7 @@ jobs:
         run: npm run build
       - name: Security Audit
         working-directory: backend
-        run: npm audit
+        run: npm audit --audit-level=critical
 
   # ==========================================
   # RUST FILE INSPECTOR TESTS

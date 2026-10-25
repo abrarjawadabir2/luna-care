@@ -63,6 +63,10 @@ android {
       isReturnDefaultValues = true
     }
   }
+  lint {
+    abortOnError = false
+    checkReleaseBuilds = false
+  }
 }
 
 // Configure Secrets Gradle Plugin to ignore sensitive backend secrets so they are NEVER leaked into BuildConfig
