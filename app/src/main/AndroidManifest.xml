@@ -6,6 +6,10 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <!-- Camera and microphone are optional; tablets and Chromebooks may lack them. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
     <!-- Camera: Only requested when user taps camera icon in medical journal (optional). -->
     <uses-permission android:name="android.permission.CAMERA" />
 
