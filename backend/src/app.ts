@@ -5,13 +5,17 @@ import { getEnv } from './config/index.js';
 import { requestIdMiddleware, errorHandler } from './api/middleware/index.js';
 import { apiV1Routes } from './api/routes/index.js';
 
-export async function buildApp(): Promise<FastifyInstance> {
-  const env = getEnv();
-  // The current database client stores records in process memory. Do not serve
-  // real accounts or private health data until the PostgreSQL adapter is wired.
-  if (env.NODE_ENV === 'production') {
+// The current database client stores records in process memory. This guard must
+// remain until a verified PostgreSQL adapter replaces it for production.
+function requirePersistentDatabaseForProduction(): void {
+  if (getEnv().NODE_ENV === 'production') {
     throw new Error('Persistent database adapter is required before production startup.');
   }
+}
+
+export async function buildApp(): Promise<FastifyInstance> {
+  const env = getEnv();
+  requirePersistentDatabaseForProduction();
 
   const app = fastify({
     logger: false, // Use our sanitized structured logger
