@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#FFF9F8">
+  <meta name="description" content="LunaCare is an open-source, privacy-conscious menstrual wellness project with cycle tracking, personal journaling and educational resources.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="LunaCare | A calmer way to understand your cycle">
+  <meta property="og:description" content="Private cycle tracking and thoughtful reproductive health education, built with care.">
+  <title>LunaCare | Understand your cycle, on your terms</title>
+  <style>
+    :root{color-scheme:light;--ink:#2c2021;--muted:#665354;--plum:#8a4d4e;--background:#fff9f8;--surface:#fff;--wash:#f9e9e8;--line:#ddc6c5;--accent:#5d5a84}
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{margin:0;background:var(--background);color:var(--ink);font:16px/1.65 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    a{color:inherit}a:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:4px}
+    .wrap{width:min(1100px,calc(100% - 48px));margin:auto}
+    .skip{position:absolute;left:12px;top:-60px;background:white;padding:10px}.skip:focus{top:12px}
+    header{border-bottom:1px solid var(--line);background:rgba(255,249,248,.95)}
+    nav{min-height:76px;display:flex;align-items:center;justify-content:space-between;gap:24px}
+    .brand{font-weight:750;text-decoration:none;font-size:1.26rem;letter-spacing:-.035em}
+    .brand-mark{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:11px;background:var(--plum);color:white;font-size:1rem;margin-right:10px}
+    nav .links{display:flex;flex-wrap:wrap;gap:24px;font-size:.92rem}
+    nav .links a{text-decoration:none;color:var(--muted)} nav .links a:hover{color:var(--plum)}
+    .hero{padding:105px 0 104px;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(240px,.8fr);gap:55px;align-items:center}
+    .eyebrow{font-size:.8rem;font-weight:750;text-transform:uppercase;letter-spacing:.15em;color:var(--plum)}
+    h1{font-size:clamp(2.75rem,5.5vw,5rem);line-height:1.08;letter-spacing:-.065em;font-weight:730;margin:17px 0 24px}
+    .lead{font-size:1.15rem;max-width:39rem;color:var(--muted);margin:0 0 30px}
+    .actions{display:flex;flex-wrap:wrap;gap:13px}
+    .button{display:inline-block;text-decoration:none;padding:13px 22px;border-radius:12px;font-weight:650}
+    .button.primary{background:var(--plum);color:white}.button.secondary{border:1px solid var(--line);background:white}
+    .hero-art{aspect-ratio:1;max-width:380px;margin:auto;display:grid;place-items:center;background:radial-gradient(circle at 30% 23%,#fff,transparent 34%),linear-gradient(135deg,#f1d6d5,#e7e1ff);border-radius:50%;box-shadow:0 30px 65px #8a4d4e17}
+    .orbit{width:69%;aspect-ratio:1;border:2px solid #ffffffb5;border-radius:50%;display:grid;place-items:center;transform:rotate(-18deg)}
+    .inner{width:70%;aspect-ratio:1;border-radius:50%;background:#fffaf9;display:grid;place-items:center;transform:rotate(18deg);text-align:center;color:var(--plum);box-shadow:0 12px 34px #47242516}
+    .inner span{font-size:2.2rem;line-height:1}.inner small{display:block;font-weight:700;letter-spacing:.05em}
+    section{padding:82px 0}
+    .section-label{font-size:.8rem;font-weight:750;letter-spacing:.12em;text-transform:uppercase;color:var(--plum)}
+    h2{font-size:clamp(1.95rem,3.2vw,2.8rem);line-height:1.16;letter-spacing:-.045em;margin:10px 0 18px}
+    .intro{max-width:690px;color:var(--muted);margin:0 0 35px}
+    .features{background:white;border-top:1px solid var(--wash);border-bottom:1px solid var(--wash)}
+    .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+    .card{padding:27px;border-radius:19px;background:var(--background);border:1px solid var(--wash)}
+    .card .number{font-size:.83rem;color:var(--plum);font-weight:750}
+    .card h3{font-size:1.14rem;line-height:1.3;margin:17px 0 9px}
+    .card p{color:var(--muted);margin:0;font-size:.96rem}
+    .privacy{display:grid;grid-template-columns:1fr 1fr;gap:70px;align-items:center}
+    .privacy-panel{border:1px solid var(--line);padding:29px;border-radius:18px;background:var(--surface)}
+    .privacy-panel strong{display:block;margin-bottom:11px}
+    .privacy-panel p{color:var(--muted);margin:0}
+    .release{background:var(--wash);text-align:center}
+    .release p{color:var(--muted);max-width:630px;margin:0 auto 24px}
+    .note{margin:25px 0 0;font-size:.85rem;color:var(--muted)}
+    footer{padding:35px 0;border-top:1px solid var(--line);font-size:.88rem;color:var(--muted)}
+    footer .wrap{display:flex;justify-content:space-between;gap:25px;flex-wrap:wrap}
+    @media(max-width:750px){.hero{grid-template-columns:1fr;padding:75px 0}.hero-art{width:250px}.cards{grid-template-columns:1fr}.privacy{grid-template-columns:1fr;gap:24px}nav .links{gap:12px}.wrap{width:min(100% - 32px,1100px)}section{padding:60px 0}}
+    @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header><nav class="wrap" aria-label="Primary navigation">
+    <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true">L</span>LunaCare</a>
+    <div class="links"><a href="#features">Features</a><a href="#privacy">Privacy</a><a href="#download">Download</a><a href="https://github.com/abrarjawadabir2/luna-care">Source code</a></div>
+  </nav></header>
+  <main id="main">
+    <div id="top" class="wrap hero">
+      <div><div class="eyebrow">Menstrual wellness, thoughtfully designed</div><h1>A calmer way to understand your cycle.</h1>
+      <p class="lead">Keep your own record of changes, reflect on how you feel, and explore reproductive health information without judgment.</p>
+      <div class="actions"><a class="button primary" href="#download">Explore downloads</a><a class="button secondary" href="#features">Explore the project</a></div></div>
+      <div class="hero-art" aria-hidden="true"><div class="orbit"><div class="inner"><div><span>◌</span><small>YOUR RHYTHM</small></div></div></div></div>
+    </div>
+    <section id="features" class="features"><div class="wrap"><div class="section-label">Designed for real life</div><h2>Understand your body in your own time.</h2>
+      <p class="intro">LunaCare's Android project brings together private tracking and educational tools. Individual features may change as development continues.</p>
+      <div class="cards">
+        <article class="card"><div class="number">01 / TRACK</div><h3>Cycle and flow</h3><p>Record period dates, flow and symptoms for a clearer picture of your personal patterns.</p></article>
+        <article class="card"><div class="number">02 / REFLECT</div><h3>Mood and journal</h3><p>Keep personal notes and reflect on wellbeing in a calm, organized space.</p></article>
+        <article class="card"><div class="number">03 / LEARN</div><h3>Thoughtful education</h3><p>Explore menstrual health and menstrual cup guidance, with reminders to seek clinical advice when needed.</p></article>
+      </div>
+    </div></section>
+    <section id="privacy"><div class="wrap privacy">
+      <div><div class="section-label">Privacy matters</div><h2>Your health notes deserve care.</h2><p class="intro">The Android application is designed around on-device records and limited data sharing. Security claims and cloud integrations are being verified before wider distribution.</p></div>
+      <div class="privacy-panel"><strong>Important boundaries</strong><p>This website does not collect cycle information, offer account registration, or send health data to an AI service. It is an informational page, not the LunaCare tracking application.</p></div>
+    </div></section>
+    <section class="release" id="download"><div class="wrap"><div class="section-label">Releases</div><h2>Follow LunaCare's progress.</h2>
+      <p>Android test builds and source updates are available on GitHub. Review each release's verification and signing status before installing. Windows and macOS desktop editions are not yet available.</p>
+      <a class="button primary" href="https://github.com/abrarjawadabir2/luna-care/releases">View Android releases</a>
+      <p class="note">For educational and personal tracking use only. LunaCare is not a medical device and cannot diagnose conditions or replace professional care.</p>
+    </div></section>
+  </main>
+  <footer><div class="wrap"><span>© 2026 LunaCare. Apache-2.0 project.</span><span><a href="https://github.com/abrarjawadabir2/luna-care">GitHub</a> · <a href="https://github.com/abrarjawadabir2/luna-care/blob/main/LICENSE">License</a></span></div></footer>
+</body>
+</html>
