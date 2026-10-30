@@ -84,9 +84,9 @@ export class AiService {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s outbound timeout
 
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+        const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
           signal: controller.signal,
           body: JSON.stringify({
             contents: [
@@ -111,7 +111,7 @@ export class AiService {
           replyText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
         }
       } catch (err) {
-        logger.error('ai.gemini_request_failed', { reason: err instanceof Error ? err.message : 'Unknown' });
+        logger.error('ai.gemini_request_failed', { reason: 'PROVIDER_REQUEST_FAILED' });
       }
     }
 

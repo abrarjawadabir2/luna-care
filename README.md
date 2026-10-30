@@ -1,268 +1,105 @@
 # LunaCare
 
-**Privacy-First, Trauma-Informed Menstrual & Reproductive Health Platform**
+An open-source menstrual wellness project with an Android application, a supporting backend, and a standalone public information page.
 
-[![CI](https://github.com/abrarjawadabir2/luna-care/actions/workflows/ci.yml/badge.svg)](https://github.com/abrarjawadabir2/luna-care/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/abrarjawadabir2/luna-care/actions/workflows/codeql.yml/badge.svg)](https://github.com/abrarjawadabir2/luna-care/actions/workflows/codeql.yml)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[Source](https://github.com/abrarjawadabir2/luna-care) · [Releases](https://github.com/abrarjawadabir2/luna-care/releases) · [Security policy](SECURITY.md) · [License](LICENSE)
 
----
+## Project status
 
-## Overview
+**In development. Not yet approved for general public health-data use.** The Android app uses local Room storage. The Node backend currently uses an **in-memory database**, so its authentication, usernames, journal and health-record APIs are **not production-persistent**. Production startup is deliberately blocked until a persistent, reviewed PostgreSQL adapter and deployment controls are implemented. Database migration files alone do not make that adapter functional.
 
-LunaCare is an open-source, local-first menstrual and reproductive health application designed to empower menstruators, learners, and supportive partners with dignified, stigma-free tracking, evidence-based education, and confidential self-care tools.
+The repository's earlier GitHub release contains APKs. Those assets have not been newly verified by this update as safely signed, functional production releases. Do not rely on a debug APK to protect sensitive information.
 
-Rooted in a **zero-surveillance philosophy**, LunaCare keeps intimate biological timelines and notes sovereign to the user's device. When optional cloud synchronization or AI assistance is enabled, all interactions are mediated through a hardened, trusted backend that enforces strict tenant isolation, cryptographic sanitization, and automated crisis heuristics.
+There is **no native Windows or macOS LunaCare desktop application yet**. The HTML file in `web/index.html` is a public information page, not a replacement for the Android app.
 
----
+## Current components
 
-## Features
+| Component | Location | Purpose |
+| --- | --- | --- |
+| Android application | `app/` | Kotlin, Jetpack Compose and on-device Room tracking |
+| Node backend | `backend/` | Fastify API and supporting services; development/test storage only |
+| Rust worker | `backend-rust/` | Internal file-inspection component |
+| Database migration drafts | `database/migrations/` | PostgreSQL schema and RLS SQL; deployment not verified |
+| Public HTML site | `web/index.html` | Static landing page, no login or health-data collection |
+| CI | `.github/workflows/` | Builds, lint, tests, dependency checks and security analysis |
 
-- **Local-First Cycle & Flow Tracking:** Log period start/end dates, flow intensity (Spotting, Light, Medium, Heavy), and physical symptoms with on-device calculation of cycle lengths and variation windows.
-- **Holistic Behavioral & Mood Logging:** Track emotional well-being, stress, sleep quality, pain levels, and hydration with correlation trend visualizations.
-- **Medical Journal & Clinical Preparation:** Structure clinical notes, medication compliance, and appointment reminders to facilitate clear communication with healthcare professionals.
-- **Evidence-Based Reproductive Education:** Curated medical articles covering cycle biology, PCOS/PCOD management, and comprehensive menstrual cup folding, insertion, and hygiene protocols.
-- **Supporter Mode:** Dedicated, privacy-respecting view for partners and caregivers providing cycle phase education and supportive care guidance without exposing intimate personal journals.
-- **On-Device PIN Security:** Protect sensitive local data with on-device PIN authentication backed by PBKDF2 hashing and automatic 15-minute lockout thresholds.
-- **Immediate Crisis Support:** Integrated heuristic detection for urgent distress and self-harm keywords, instantly presenting vetted local and international crisis helpline cards.
+## Getting started
 
----
-
-## Architecture Overview
-
-LunaCare employs a defense-in-depth architecture separating client-side presentation from privileged services:
-
-```
-[ Native Android Client (Kotlin / Compose) ]
-                  │
-                  ▼
-         [ Room Database ] (Local-First On-Device Storage)
-                  │
-                  ▼ (Optional Sync via TLS 1.3 + JWT)
-    [ Trusted Backend Gateway (Fastify / TypeScript) ]
-       ├── Sanitized Audit Logging (Purpose-Hashed HMAC)
-       ├── File Inspector Worker (Rust / Memory-Safe)
-       ├── Automated Maintenance & Deletion Scheduler
-       ├── PostgreSQL / Supabase Database (Row-Level Security)
-       └── Gemini AI Platform (Redacted Context Mediation)
-```
-
-- **Client Layer:** Android application written in Kotlin and Jetpack Compose utilizing Room SQLite for offline-first data sovereignty.
-- **Trusted Gateway:** Fastify backend enforcing strict input validation (Zod schemas), sliding-window rate limiting, and global search engine blocking (`X-Robots-Tag: noindex`).
-- **File Inspector:** Focused Rust worker utilizing `#![forbid(unsafe_code)]` to enforce strict magic-byte verification and 5MB size limits on all media uploads.
-- **Database Layer:** PostgreSQL with Row-Level Security (RLS) guaranteeing strict tenant isolation.
-
----
-
-## Technology Stack
-
-- **Android Client:** Kotlin 2.0+, Jetpack Compose, Material 3, Android Architecture Components (ViewModel, StateFlow), Room 2.6+.
-- **Backend Service:** Node.js 22+, Fastify v5, TypeScript, Zod, `@fastify/helmet`, `@fastify/cors`.
-- **Security Worker:** Rust 1.75+, `#![forbid(unsafe_code)]`, Serde.
-- **Database:** PostgreSQL 15+ / Supabase.
-- **CI/CD & Testing:** GitHub Actions, CodeQL static analysis, Roborazzi screenshot testing, Node.js test runner.
-
----
-
-## Prerequisites
-
-Before setting up LunaCare, ensure the following tools are installed on your workstation using official installation methods:
-
-- **Git:** Version 2.30+ ([git-scm.com](https://git-scm.com/))
-- **Java Development Kit (JDK):** JDK 17 or JDK 21 LTS ([adoptium.net](https://adoptium.net/))
-- **Android Studio:** Ladybug (2024.2.1+) or newer ([developer.android.com/studio](https://developer.android.com/studio))
-- **Node.js & npm (for backend development):** Node.js 20+ LTS ([nodejs.org](https://nodejs.org/))
-- **Rust toolchain (for Rust file inspector):** Installed via the official installer ([rustup.rs](https://rustup.rs/))
-
----
-
-## Setup & Installation
-
-Clone the repository and navigate to the project directory:
+Install [Git](https://git-scm.com/downloads), [Android Studio](https://developer.android.com/studio) and the JDK supported by the Gradle project using their official installers. Android Studio can install required SDK components. No Homebrew installation is required.
 
 ```bash
 git clone https://github.com/abrarjawadabir2/luna-care.git
 cd luna-care
 ```
 
-### macOS
+### macOS and Linux
 
-Ensure your installed tools are accessible from the terminal:
-
-```bash
-git --version
-java -version
-node --version
-npm --version
-```
-
-Build and test the Android client using the Gradle wrapper:
-
-```bash
+```sh
 ./gradlew testDebugUnitTest
 ./gradlew assembleDebug
 ```
 
-### Windows
-
-Open PowerShell or Windows Terminal:
-
-```powershell
-git --version
-java -version
-node --version
-npm --version
-```
-
-Build and test the Android client using the Windows Gradle wrapper:
+### Windows (PowerShell)
 
 ```powershell
 .\gradlew.bat testDebugUnitTest
 .\gradlew.bat assembleDebug
 ```
 
-### Linux
+### Android Studio
 
-Verify system prerequisites:
+Open the repository root in Android Studio, synchronize Gradle, install the requested Android SDK, and run `app` on an emulator or a test device. The debug build uses the standard per-developer Android debug signing key; do not use that key for production releases.
 
-```bash
-git --version
-java -version
-node --version
-npm --version
+### Backend development
+
+Install a supported [Node.js LTS](https://nodejs.org/) release. Then:
+
+```sh
+cd backend
+npm ci
+npm run typecheck
+npm test
+npm run build
+npm run dev
 ```
 
-Ensure the Gradle wrapper has execution permissions, then build:
+Create `backend/.env` from `backend/.env.example` for local testing only. **Never commit secrets.** The backend intentionally refuses `NODE_ENV=production` while storage remains in-memory.
 
-```bash
-chmod +x ./gradlew
-./gradlew testDebugUnitTest
-./gradlew assembleDebug
+### Rust worker
+
+If working on the internal Rust inspector, install Rust from [rustup.rs](https://rustup.rs/), then run:
+
+```sh
+cd backend-rust
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test
 ```
 
-### Android Studio Setup
+### Public HTML page
 
-1. Launch **Android Studio**.
-2. Select **Open** and choose the cloned `luna-care` directory.
-3. Allow Gradle to synchronize dependencies.
-4. When prompted, install the required Android SDK Platform (API 35) and Build Tools via the Android Studio SDK Manager.
-5. Create a local environment configuration if cloud features are required:
-   ```bash
-   cp .env.example .env
-   ```
-6. Launch an Android Virtual Device (AVD) running API 34+ or connect a physical device with USB debugging enabled.
-7. Click **Run 'app'** (or press `Shift + F10`) to deploy the debug build.
-8. **Security Note:** Never commit `local.properties` or private release signing keystores.
+`web/index.html` is a dependency-free informational webpage. Open it directly in a browser or publish it with a static web host. It is not connected to user profiles, period records or the backend.
 
----
+## Developer agent tooling (optional)
 
-## Backend Development
+LunaCare does not bundle ECC into the application. Developers who use Antigravity can review [affaan-m/ECC](https://github.com/affaan-m/ECC) and optionally run `scripts/setup-ecc.sh` on macOS/Linux or `scripts/setup-ecc.ps1` on Windows. Both invoke the pinned `ecc-universal@2.2.3` minimal Antigravity setup. This is **not** part of runtime installation, CI, or app release builds. Review third-party scripts before running them.
 
-To develop or test the trusted backend gateway:
+## Android release signing
 
-1. Navigate to the backend directory:
-   ```bash
-   cd backend
-   ```
-2. Install dependencies:
-   ```bash
-   npm ci
-   ```
-3. Create your local environment configuration:
-   ```bash
-   cp .env.example .env
-   ```
-   *Fill in your local database connection and generate a minimum 32-character secret for `JWT_SECRET`.*
-4. Start the development server:
-   ```bash
-   npm run dev
-   ```
-5. Run the backend security boundary tests:
-   ```bash
-   npm test
-   ```
+A publishable Android release requires a private keystore, verified release signing, successful checks, privacy review and a production-ready data architecture. Tag-triggered release CI expects the GitHub Actions secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_STORE_PASSWORD` and `ANDROID_KEY_PASSWORD`. The private keystore must contain the alias `upload`. No real credentials or signing files belong in Git.
 
----
+Do not treat a generated but unsigned `app-release.apk` as a distributable installer.
 
-## Rust File Inspector Setup
+## Security and privacy
 
-If modifying the media inspection worker:
+Health data is sensitive. Use synthetic information when testing. Never put passwords, OTP values, service-role keys or private medical notes in public repositories, analytics, logs or agent prompts. Production services must enforce authentication, authorization, rate limits, private storage, retention and backups; the current backend does **not** meet all release requirements.
 
-1. Verify the official Rust toolchain:
-   ```bash
-   rustc --version
-   cargo --version
-   ```
-2. Navigate to the worker directory:
-   ```bash
-   cd backend-rust
-   ```
-3. Run the memory safety and format inspection tests:
-   ```bash
-   cargo test
-   ```
-4. Build the release binary:
-   ```bash
-   cargo build --release
-   ```
+Please follow [SECURITY.md](SECURITY.md) when reporting issues. Do not disclose exploitable details in public issues before a fix is available.
 
----
+## Medical disclaimer
 
-## Testing & Quality Assurance
-
-LunaCare enforces comprehensive verification across all project components:
-
-```bash
-# 1. Android unit & algorithm tests
-./gradlew testDebugUnitTest
-
-# 2. Backend security boundaries & threat defenses
-cd backend && npm test
-
-# 3. Rust memory safety & file signature tests
-cd backend-rust && cargo test
-```
-
----
-
-## Security Principles
-
-- **Zero Secrets in Version Control:** All API tokens, JWT signing secrets, database credentials, and signing keys are supplied exclusively via environment variables or secret managers.
-- **Client-Side Minimization:** Privileged credentials (such as `GEMINI_API_KEY` or database service keys) never reside within the Android APK.
-- **Defense in Depth:** Every request to sensitive endpoints requires verified authentication, server-side authorization checks, and database-level Row-Level Security (RLS).
-- **Constant-Time Verification:** Login, registration, and OTP verification endpoints return uniform error codes to prevent user account enumeration.
-- **Search Engine Blocking:** All API endpoints and authenticated surfaces emit `X-Robots-Tag: noindex, nofollow, noarchive` headers.
-- **Vulnerability Reporting & Policy:** For responsible disclosure guidelines, triage SLAs, and supported versions, see our [Security Policy](SECURITY.md).
-
----
-
-## Privacy Principles
-
-- **No Third-Party Advertising SDKs:** LunaCare does not incorporate tracking beacons, advertising networks, or third-party behavioral analytics.
-- **Coarse Geolocation:** Healthcare facility lookups utilize coarse, city-level bounding boxes. Exact GPS coordinates are never transmitted or persisted on backend servers.
-- **Full Data Sovereignty:** Users can export their complete data record at any time or trigger immediate cascading account deletion across all tables.
-
----
-
-## Contributing
-
-We welcome contributions that respect user privacy and adhere to our security architecture:
-
-1. Fork the repository and create a feature branch (`git checkout -b feat/your-feature`).
-2. Adhere to the established code conventions (Kotlin, TypeScript, Rust).
-3. Ensure all tests pass (`./gradlew testDebugUnitTest`, `npm test`, `cargo test`).
-4. Ensure no un-ignored configuration files or credentials enter the commit.
-5. Submit a descriptive Pull Request against the `main` branch.
-
----
-
-## Medical Disclaimer
-
-LunaCare is an educational and self-tracking application designed to assist individuals in observing personal wellness trends. **LunaCare is not a certified medical device and does not provide formal medical diagnoses, clinical treatment plans, or contraception guarantees.** Always consult a qualified healthcare provider regarding reproductive health concerns, severe pain, or medical conditions.
-
----
+LunaCare is for education and personal wellness tracking. It cannot diagnose, prescribe, provide emergency care, or guarantee pregnancy or contraception outcomes. Seek a qualified clinician for medical concerns.
 
 ## License
 
-LunaCare is licensed under the [Apache License, Version 2.0](LICENSE).  
-Copyright 2026 Abrar Jawad. See [NOTICE](NOTICE) for additional attribution details.
+Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

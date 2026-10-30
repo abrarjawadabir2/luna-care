@@ -9,15 +9,15 @@ export function errorHandler(error: FastifyError, request: FastifyRequest, reply
   if (error instanceof ZodError) {
     logger.warn('validation.failed', {
       requestId,
-      fieldCount: error.errors.length,
-      fields: error.errors.map(e => e.path.join('.'))
+      fieldCount: error.issues.length,
+      fields: error.issues.map(e => e.path.join('.'))
     });
 
     return reply.status(400).send({
       error: {
         code: 'VALIDATION_ERROR',
         message: 'Request payload validation failed. Check field types and constraints.',
-        details: error.errors.map(e => ({
+        details: error.issues.map(e => ({
           field: e.path.join('.'),
           message: e.message
         })),

@@ -3,6 +3,7 @@ name: LunaCare CI/CD Pipeline
 on:
   push:
     branches: [ main, develop, release/* ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ main, develop ]
 
@@ -14,6 +15,43 @@ env:
   NODE_VERSION: '20'
 
 jobs:
+  web-static-check:
+    name: Public HTML smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate standalone public landing page
+        run: |
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+
+          class Page(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.tags = []
+              def handle_starttag(self, tag, attrs):
+                  self.tags.append((tag, dict(attrs)))
+
+          source = Path("web/index.html").read_text(encoding="utf-8")
+          page = Page()
+          page.feed(source)
+          assert page.tags[0][0] == "html" or any(tag == "html" for tag, _ in page.tags)
+          assert any(tag == "html" and attrs.get("lang") for tag, attrs in page.tags)
+          assert any(tag == "meta" and attrs.get("name") == "description" for tag, attrs in page.tags)
+          assert any(tag == "h1" for tag, _ in page.tags)
+          assert not any(tag == "form" for tag, _ in page.tags)
+          assert not any(tag == "script" and attrs.get("src") for tag, attrs in page.tags)
+          print("Standalone HTML structure checked successfully.")
+          PY
+      - name: Attach downloadable HTML
+        uses: actions/upload-artifact@v4
+        with:
+          name: lunacare-html-landing-page
+          path: web/index.html
+          if-no-files-found: error
+          retention-days: 30
+
   # ==========================================
   # NODE.JS BACKEND TESTS
   # ==========================================
@@ -206,34 +244,26 @@ jobs:
             ~/.gradle/wrapper
           key: gradle-${{ hashFiles('**/*.gradle.kts', '**/gradle-wrapper.properties') }}
           restore-keys: gradle-
-      - name: Create debug keystore
-        run: |
-          keytool -genkeypair -v -keystore debug.keystore -storepass android \
-            -alias androiddebugkey -keypass android \
-            -dname "CN=Debug,OU=Android,O=LunaCare,L=Unknown,S=Unknown,C=US" \
-            -validity 10000 -keyalg RSA -keysize 2048
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
       - name: Build Debug APK
         run: ./gradlew assembleDebug
-        env:
-          STORE_PASSWORD: android
-          KEY_PASSWORD: android
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: lunacare-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
           retention-days: 14
 
   # ==========================================
-  # 5. RELEASE BUILD (main branch only)
+  # 5. SIGNED RELEASE BUILD (version tags only)
   # ==========================================
   build-release:
     name: Build Release APK
     runs-on: ubuntu-latest
     needs: [build]
-    if: github.ref == 'refs/heads/main'
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v7
       - name: Set up JDK ${{ env.JAVA_VERSION }}
@@ -251,11 +281,37 @@ jobs:
           restore-keys: gradle-
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
-      - name: Build Release APK
-        run: ./gradlew assembleRelease
-      - name: Upload Release APK
+
+      - name: Validate signing configuration
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$SIGNING_KEYSTORE_BASE64" || { echo 'Missing ANDROID_KEYSTORE_BASE64'; exit 1; }
+          test -n "$STORE_PASSWORD" || { echo 'Missing ANDROID_STORE_PASSWORD'; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo 'Missing ANDROID_KEY_PASSWORD'; exit 1; }
+          printf '%s' "$SIGNING_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/lunacare-upload.jks"
+          chmod 600 "$RUNNER_TEMP/lunacare-upload.jks"
+      - name: Build signed release APK and AAB
+        env:
+          KEYSTORE_PATH: ${{ runner.temp }}/lunacare-upload.jks
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease bundleRelease
+      - name: Verify release APK signing
+        run: |
+          set -euo pipefail
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify app/build/outputs/apk/release/app-release.apk
+      - name: Upload signed Android release builds
         uses: actions/upload-artifact@v4
         with:
-          name: lunacare-release-apk
-          path: app/build/outputs/apk/release/app-release.apk
+          name: lunacare-signed-android-release
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
           retention-days: 30
