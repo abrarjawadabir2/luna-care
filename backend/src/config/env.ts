@@ -29,7 +29,7 @@ export function getEnv(): Env {
   const result = envSchema.safeParse(process.env);
   if (!result.success) {
     // SECURITY: Safe error reporting — log variable names that failed, NEVER print secret values
-    const errorDetails = result.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+    const errorDetails = result.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
     throw new Error(`Invalid environment configuration: ${errorDetails}`);
   }
 
