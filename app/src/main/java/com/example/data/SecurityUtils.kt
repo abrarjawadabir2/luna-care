@@ -39,7 +39,7 @@ object SecurityUtils {
     fun hashForAudit(input: String): String {
         val digest = java.security.MessageDigest.getInstance("SHA-256")
         val hashBytes = digest.digest(input.toByteArray(Charsets.UTF_8))
-        return java.util.Base64.getEncoder().encodeToString(hashBytes)
+        return Base64.encodeToString(hashBytes, Base64.NO_WRAP)
     }
 
     private fun getOrCreateSecretKey(): SecretKey {
