@@ -381,20 +381,14 @@ describe('LunaCare Backend Security Boundaries & Threat Defenses', () => {
   });
 
   // TEST 27: Private documentation repository boundaries
-  test('27. Private documentation (docs-private and docs/private) exists locally, is ignored by git, and is not tracked', async () => {
+  test('27. Private documentation is ignored and never tracked in public Git', async () => {
     const { execSync } = await import('node:child_process');
     const fs = await import('node:fs');
     const path = await import('node:path');
     const rootDir = path.resolve(__dirname, '../..');
 
-    const docsPrivatePath = path.join(rootDir, 'docs-private');
-    const docsInDocsPath = path.join(rootDir, 'docs/private');
-
-    assert.ok(fs.existsSync(docsPrivatePath), 'docs-private must exist locally');
-    assert.ok(fs.existsSync(docsInDocsPath), 'docs/private must exist locally');
-    assert.ok(fs.existsSync(path.join(docsInDocsPath, 'PRD.md')), 'docs/private/PRD.md must exist');
-    assert.ok(fs.existsSync(path.join(docsInDocsPath, 'SECURITY.md')), 'docs/private/SECURITY.md must exist');
-
+    // A fresh CI checkout must not contain private local-only documentation.
+    // Tests must not require ignored files to be committed for CI to pass.
     // Verify git ls-files does not track private docs
     const trackedDocs1 = execSync('git ls-files docs-private', { cwd: rootDir, encoding: 'utf8' }).trim();
     assert.equal(trackedDocs1, '', 'docs-private must NOT be tracked by git');
