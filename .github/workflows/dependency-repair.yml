@@ -31,6 +31,7 @@ jobs:
         run: |
           npm install --save-exact fastify@5.12.7 zod@4.6.7 --package-lock-only --ignore-scripts
           npm audit fix --package-lock-only --ignore-scripts
+      # Typecheck and tests must pass before the bot can change the lockfile.
       - name: Verify refreshed dependencies
         working-directory: backend
         run: |
