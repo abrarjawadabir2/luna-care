@@ -7,11 +7,16 @@ import { apiV1Routes } from './api/routes/index.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const env = getEnv();
+  // The current database client stores records in process memory. Do not serve
+  // real accounts or private health data until the PostgreSQL adapter is wired.
+  if (env.NODE_ENV === 'production') {
+    throw new Error('Persistent database adapter is required before production startup.');
+  }
 
   const app = fastify({
     logger: false, // Use our sanitized structured logger
     bodyLimit: 10 * 1024 * 1024, // 10MB maximum request size limit
-    trustProxy: env.NODE_ENV === 'production'
+    trustProxy: false
   });
 
   // 1. Security Headers (Helmet)
@@ -41,7 +46,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       if (!origin) return cb(null, true);
       const allowed = env.CORS_ORIGIN.split(',').map(s => s.trim());
       const isDevLocal = env.NODE_ENV !== 'production' && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-      if (allowed.includes(origin) || allowed.includes('*') || isDevLocal) {
+      if (allowed.includes(origin) || isDevLocal) {
         cb(null, true);
       } else {
         cb(null, false);
