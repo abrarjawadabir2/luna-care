@@ -1,5 +1,8 @@
 {
   "dependencies": {
     "@dietrichgebert/ponytail": "github:DietrichGebert/ponytail"
+  },
+  "devDependencies": {
+    "ecc-universal": "^2.2.3"
   }
 }

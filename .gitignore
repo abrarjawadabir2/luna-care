@@ -59,13 +59,46 @@ docs-private/**
 docs/private/
 docs/private/**
 
-# Secrets & Keys
+# Secrets & API Keys
 .env
 .env.*
+.env.local
 *.env
 !.env.example
+!**/.env.example
 backend/.env
 backend-rust/.env
+app/.env
+
+# API key files and secret configurations
+*api_key*.json
+*api_key*.properties
+*api_key*.txt
+*apikey*.json
+*apikey*.properties
+*apikey*.txt
+secrets.properties
+key.properties
+keys.properties
+apikey.properties
+api_key.properties
+credentials.json
+google-services.json
+service-account*.json
+serviceAccountKey*.json
+client_secret*.json
+firebase-adminsdk*.json
+
+# Tokens & private keys
+*.token
+token.json
+tokens.json
+*.secret
+*.pem
+*.key
+*.p12
+*.pfx
+*.pkcs12
 *.keystore
 !debug.keystore
 *.jks
