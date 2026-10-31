@@ -187,6 +187,15 @@ jobs:
       - name: Run Python security audit script
         run: |
           python scripts/audit_security.py --dry-run
+      - name: Test and generate local-only code index
+        run: |
+          python -m unittest discover -s scripts -p 'test_index_codebase.py'
+          python scripts/index_codebase.py
+          test -f docs-private/code-index.json
+          test -f docs-private/CODE_INDEX.md
+          test -z "$(git ls-files docs-private)"
+          # Keep generated private indexes only on the ephemeral runner.
+          # Do not upload them as Actions artifacts or commit them.
       - name: Check for hardcoded secrets
         run: |
           # Fail if any hardcoded password/key patterns are found in source
