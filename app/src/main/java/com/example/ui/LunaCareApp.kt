@@ -1031,7 +1031,7 @@ fun MainAppLayout(profile: Profile, viewModel: LunaViewModel) {
             bottomBar = {
                 when (userMode) {
                     UserMode.SELF_TRACKING -> NavigationBar(containerColor = MaterialTheme.colorScheme.background) {
-                        SelfTrackingTab.values().forEach { tab ->
+                        SelfTrackingTab.values().filterNot { it == SelfTrackingTab.Care }.forEach { tab ->
                             NavigationBarItem(
                                 selected = activeSelfTab == tab && activeDeepScreen == null,
                                 onClick = { activeSelfTab = tab; activeDeepScreen = null },
@@ -1048,7 +1048,7 @@ fun MainAppLayout(profile: Profile, viewModel: LunaViewModel) {
                         }
                     }
                     UserMode.SUPPORT_MODE -> NavigationBar(containerColor = MaterialTheme.colorScheme.background) {
-                        SupportTab.values().forEach { tab ->
+                        SupportTab.values().filterNot { it == SupportTab.Settings }.forEach { tab ->
                             NavigationBarItem(
                                 selected = activeSupportTab == tab && activeDeepScreen == null,
                                 onClick = { activeSupportTab = tab; activeDeepScreen = null },
@@ -1113,14 +1113,14 @@ fun MainAppLayout(profile: Profile, viewModel: LunaViewModel) {
                                 SupportTab.Learn -> LearningTab(viewModel = viewModel)
                                 SupportTab.Care -> CareTab(profile = profile, viewModel = viewModel)
                                 SupportTab.Notes -> JournalTab(profile = profile, viewModel = viewModel)
-                                SupportTab.Settings -> SettingsTab(profile = profile, viewModel = viewModel, onBack = {})
+                                SupportTab.Settings -> SettingsTab(profile = profile, viewModel = viewModel, onBack = null)
                             }
                             UserMode.EDUCATION_ONLY -> when (activeEduTab) {
                                 EducationTab.Home -> DashboardTab(profile = profile, viewModel = viewModel, onDeepNavigate = { activeDeepScreen = it })
                                 EducationTab.Learn -> LearningTab(viewModel = viewModel)
                                 EducationTab.Care -> CareTab(profile = profile, viewModel = viewModel)
                                 EducationTab.Mind -> BehaviourCheckInTab(profile = profile, viewModel = viewModel)
-                                EducationTab.Settings -> SettingsTab(profile = profile, viewModel = viewModel, onBack = {})
+                                EducationTab.Settings -> SettingsTab(profile = profile, viewModel = viewModel, onBack = null)
                             }
                         }
                     }
@@ -3051,7 +3051,8 @@ fun SupportModeTab(profile: Profile) {
 // ==========================================
 
 @Composable
-fun SettingsTab(profile: Profile, viewModel: LunaViewModel, onBack: () -> Unit) {
+fun SettingsTab(profile: Profile, viewModel: LunaViewModel, onBack: (() -> Unit)?) {
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
     var cycleLengthStr by remember { mutableStateOf(profile.averageCycleLength.toString()) }
     var periodLengthStr by remember { mutableStateOf(profile.averagePeriodLength.toString()) }
     var periodReminders by remember { mutableStateOf(profile.periodReminders) }
@@ -3060,13 +3061,13 @@ fun SettingsTab(profile: Profile, viewModel: LunaViewModel, onBack: () -> Unit) 
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
-            if (onBack != {}) {
+            if (onBack != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
-                    Text("Settings", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+                    IconButton(onClick = { onBack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+                    Text("Settings", style = MaterialTheme.typography.headlineMedium)
                 }
             } else {
-                Text("Settings", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+                Text("Settings", style = MaterialTheme.typography.headlineMedium)
             }
         }
         item {
@@ -3107,7 +3108,7 @@ fun SettingsTab(profile: Profile, viewModel: LunaViewModel, onBack: () -> Unit) 
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))) {
                         Text(LunaContent.GLOBAL_DISCLAIMER, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
                     }
-                    Button(onClick = { viewModel.clearAllUserData() }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
+                    Button(onClick = { showDeleteConfirmation = true }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
                         Icon(Icons.Default.DeleteForever, null); Spacer(modifier = Modifier.width(8.dp)); Text("Delete All Data & Reset")
                     }
                 }
@@ -3115,10 +3116,34 @@ fun SettingsTab(profile: Profile, viewModel: LunaViewModel, onBack: () -> Unit) 
         }
         item {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-                Text("LunaCare v2.0.0 · Educational Support Only", style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f))
-                Text("Not medical advice • Not a substitute for professional care", style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f))
+                Text("LunaCare · Educational support only", style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Not a substitute for professional medical care", style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+    }
+
+    if (showDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text("Delete all LunaCare data?") },
+            text = { Text("Your saved records and settings on this device will be removed. This action cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirmation = false
+                        viewModel.clearAllUserData()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete all data")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmation = false }) {
+                    Text("Keep my data")
+                }
+            }
+        )
     }
 }
 
