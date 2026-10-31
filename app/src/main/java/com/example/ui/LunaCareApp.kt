@@ -19,6 +19,7 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -228,130 +229,90 @@ fun deriveUserMode(userModeStr: String, genderModeStr: String, bodyRelevantModeS
 
 @Composable
 fun OpeningPage(onGetStarted: () -> Unit, onGuest: () -> Unit) {
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        SoftCreamBackground,
-                        Color(0xFFF7EEF5)
-                    )
-                )
-            )
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 28.dp, vertical = 30.dp),
+        verticalArrangement = Arrangement.spacedBy(22.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
-                .padding(horizontal = 32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Outlined.FavoriteBorder,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(28.dp)
+            )
+            Spacer(Modifier.width(10.dp))
+            Text("LunaCare", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+        }
+
+        Spacer(Modifier.height(30.dp))
+
+        Text(
+            "Understand your cycle. On your terms.",
+            style = MaterialTheme.typography.displaySmall,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Text(
+            "A private space to track periods, reflect on wellbeing, and learn about menstrual health.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant
         ) {
-            Spacer(modifier = Modifier.height(60.dp))
-
-            // Logo + branding
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(
-                    modifier = Modifier
-                        .size(120.dp)
-                        .clip(CircleShape)
-                        .background(
-                            Brush.radialGradient(
-                                colors = listOf(
-                                    MutedRosePrimary.copy(alpha = 0.2f),
-                                    LavenderSecondary.copy(alpha = 0.1f)
-                                )
-                            )
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Favorite,
-                        contentDescription = null,
-                        tint = MutedRosePrimary,
-                        modifier = Modifier.size(64.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.height(24.dp))
-                Text(
-                    text = "LunaCare",
-                    style = MaterialTheme.typography.displaySmall.copy(
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 1.sp
-                    ),
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Period care, mental wellness, and gentle support.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-                    textAlign = TextAlign.Center
-                )
-            }
-
-            // Feature highlights
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OpeningFeatureRow(Icons.Default.CalendarMonth, "Track your cycle with privacy")
-                OpeningFeatureRow(Icons.Default.Mood, "Daily mental wellness check-ins")
-                OpeningFeatureRow(Icons.Default.LocalPharmacy, "Care product discovery")
-                OpeningFeatureRow(Icons.Default.School, "Period & menstrual cup education")
-                OpeningFeatureRow(Icons.Default.Lock, "All data encrypted on your device")
-            }
-
-            // Buttons
             Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.padding(bottom = 16.dp)
+                modifier = Modifier.fillMaxWidth().padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
-                Button(
-                    onClick = onGetStarted,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp)
-                        .testTag("get_started_button"),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Text("Get Started", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, null, modifier = Modifier.size(18.dp))
-                }
-                OutlinedButton(
-                    onClick = onGuest,
-                    modifier = Modifier.fillMaxWidth().height(56.dp).testTag("guest_button"),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Text("Continue as Guest", fontWeight = FontWeight.Medium, fontSize = 16.sp)
-                }
-                Text(
-                    text = "Educational support only. Not medical advice. See full disclaimer inside.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
+                OpeningFeatureRow(Icons.Default.CalendarMonth, "Record dates, flow, and symptoms")
+                OpeningFeatureRow(Icons.Default.EditNote, "Keep personal notes and mood check-ins")
+                OpeningFeatureRow(Icons.Default.MenuBook, "Explore practical menstrual health education")
             }
         }
+
+        Spacer(Modifier.height(10.dp))
+
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(
+                onClick = onGetStarted,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp).testTag("get_started_button"),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text("Set up my space")
+                Spacer(Modifier.width(8.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
+            }
+            OutlinedButton(
+                onClick = onGuest,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp).testTag("guest_button"),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text("Explore without setting up")
+            }
+        }
+        Text(
+            "For education and personal tracking only. LunaCare cannot diagnose conditions or replace medical care.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
 @Composable
 private fun OpeningFeatureRow(icon: ImageVector, text: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-        }
-        Spacer(modifier = Modifier.width(16.dp))
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
     }
 }
 
@@ -1002,6 +963,7 @@ fun PinAuthScreen(storedPin: String, onAuthenticated: (String) -> Boolean) {
 fun MainAppLayout(profile: Profile, viewModel: LunaViewModel) {
     val userMode = try { UserMode.valueOf(profile.userMode) } catch (e: Exception) { UserMode.EDUCATION_ONLY }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val drawerScope = rememberCoroutineScope()
     val unreadCount by viewModel.unreadNotificationCount.collectAsState()
 
     var activeSelfTab by rememberSaveable { mutableStateOf(SelfTrackingTab.Home) }
@@ -1018,7 +980,7 @@ fun MainAppLayout(profile: Profile, viewModel: LunaViewModel) {
                 profile = profile,
                 viewModel = viewModel,
                 onNavigateTo = { screen -> activeDeepScreen = screen },
-                onClose = { /* handled by drawerState */ }
+                onClose = { drawerScope.launch { drawerState.close() } }
             )
         }
     ) {
@@ -1039,19 +1001,17 @@ fun MainAppLayout(profile: Profile, viewModel: LunaViewModel) {
                             }
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
-                                Text("LunaCare", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black))
-                                if (profile.city != null || profile.country != null) {
-                                    Text(
-                                        listOfNotNull(profile.city, profile.country).joinToString(", "),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
-                                    )
-                                }
+                                Text("LunaCare", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "Your wellness space",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                     },
                     navigationIcon = {
-                        IconButton(onClick = { /* drawerState.open() called by LaunchedEffect pattern */ }) {
+                        IconButton(onClick = { drawerScope.launch { drawerState.open() } }) {
                             Icon(Icons.Default.Menu, "Menu", tint = MaterialTheme.colorScheme.onSurface)
                         }
                     },
@@ -1076,7 +1036,7 @@ fun MainAppLayout(profile: Profile, viewModel: LunaViewModel) {
                                 selected = activeSelfTab == tab && activeDeepScreen == null,
                                 onClick = { activeSelfTab = tab; activeDeepScreen = null },
                                 icon = { Icon(tab.icon, tab.title) },
-                                label = { Text(tab.title, fontSize = 10.sp) },
+                                label = { Text(tab.title, maxLines = 1) },
                                 colors = NavigationBarItemDefaults.colors(
                                     selectedIconColor = MaterialTheme.colorScheme.primary,
                                     selectedTextColor = MaterialTheme.colorScheme.primary,
@@ -1093,7 +1053,7 @@ fun MainAppLayout(profile: Profile, viewModel: LunaViewModel) {
                                 selected = activeSupportTab == tab && activeDeepScreen == null,
                                 onClick = { activeSupportTab = tab; activeDeepScreen = null },
                                 icon = { Icon(tab.icon, tab.title) },
-                                label = { Text(tab.title, fontSize = 10.sp) },
+                                label = { Text(tab.title, maxLines = 1) },
                                 colors = NavigationBarItemDefaults.colors(
                                     selectedIconColor = MaterialTheme.colorScheme.primary,
                                     indicatorColor = MaterialTheme.colorScheme.primaryContainer
@@ -1107,7 +1067,7 @@ fun MainAppLayout(profile: Profile, viewModel: LunaViewModel) {
                                 selected = activeEduTab == tab && activeDeepScreen == null,
                                 onClick = { activeEduTab = tab; activeDeepScreen = null },
                                 icon = { Icon(tab.icon, tab.title) },
-                                label = { Text(tab.title, fontSize = 10.sp) },
+                                label = { Text(tab.title, maxLines = 1) },
                                 colors = NavigationBarItemDefaults.colors(
                                     selectedIconColor = MaterialTheme.colorScheme.primary,
                                     indicatorColor = MaterialTheme.colorScheme.primaryContainer
@@ -1131,11 +1091,16 @@ fun MainAppLayout(profile: Profile, viewModel: LunaViewModel) {
                     "permission_center" -> PermissionCenterScreen(profile = profile, viewModel = viewModel, onBack = { activeDeepScreen = null })
                     "profile_edit" -> ProfileEditScreen(profile = profile, viewModel = viewModel, onBack = { activeDeepScreen = null })
                     "bookmarks" -> BookmarksScreen(viewModel = viewModel, onBack = { activeDeepScreen = null })
+                    "care" -> CareTab(profile = profile, viewModel = viewModel)
                     else -> {
                         // Tab routing
                         when (userMode) {
                             UserMode.SELF_TRACKING -> when (activeSelfTab) {
-                                SelfTrackingTab.Home -> DashboardTab(profile = profile, viewModel = viewModel, onDeepNavigate = { activeDeepScreen = it })
+                                SelfTrackingTab.Home -> DashboardTab(
+                                    profile = profile, viewModel = viewModel,
+                                    onDeepNavigate = { activeDeepScreen = it },
+                                    onQuickNavigate = { destination -> activeSelfTab = destination; activeDeepScreen = null }
+                                )
                                 SelfTrackingTab.Cycle -> CycleTab(profile = profile, viewModel = viewModel)
                                 SelfTrackingTab.Mood -> BehaviourCheckInTab(profile = profile, viewModel = viewModel)
                                 SelfTrackingTab.Journal -> JournalTab(profile = profile, viewModel = viewModel)
@@ -1218,7 +1183,6 @@ fun SidePanel(profile: Profile, viewModel: LunaViewModel, onNavigateTo: (String)
                 Triple(Icons.Default.LocalHospital, "Health Awareness", "health_awareness"),
                 Triple(Icons.Default.LocalPharmacy, "Care & Products", "care"),
                 Triple(Icons.Default.Psychology, "AI Assistant", "ai_assistant"),
-                Triple(Icons.Default.Stars, "Premium & Subscription", "ai_assistant"),
                 Triple(Icons.Default.Palette, "Theme / Dark Mode", "settings")
             )
             menuItems.forEach { (icon, label, route) ->
@@ -1226,7 +1190,7 @@ fun SidePanel(profile: Profile, viewModel: LunaViewModel, onNavigateTo: (String)
                     icon = { Icon(icon, null, modifier = Modifier.size(20.dp)) },
                     label = { Text(label) },
                     selected = false,
-                    onClick = { onNavigateTo(route) },
+                    onClick = { onNavigateTo(route); onClose() },
                     modifier = Modifier.padding(vertical = 2.dp)
                 )
             }
@@ -1240,7 +1204,7 @@ fun SidePanel(profile: Profile, viewModel: LunaViewModel, onNavigateTo: (String)
 
             // Version
             Spacer(modifier = Modifier.height(16.dp))
-            Text("LunaCare v2.0.0", style = MaterialTheme.typography.bodySmall,
+            Text("LunaCare", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
                 modifier = Modifier.align(Alignment.CenterHorizontally))
         }
@@ -1252,7 +1216,12 @@ fun SidePanel(profile: Profile, viewModel: LunaViewModel, onNavigateTo: (String)
 // ==========================================
 
 @Composable
-fun DashboardTab(profile: Profile, viewModel: LunaViewModel, onDeepNavigate: (String) -> Unit) {
+fun DashboardTab(
+    profile: Profile,
+    viewModel: LunaViewModel,
+    onDeepNavigate: (String) -> Unit,
+    onQuickNavigate: (SelfTrackingTab) -> Unit = {}
+) {
     val periodLogs by viewModel.periodLogs.collectAsState()
     val behaviourLogs by viewModel.behaviourLogs.collectAsState()
     val lastLog = periodLogs.maxByOrNull { it.startDate }
@@ -1265,13 +1234,13 @@ fun DashboardTab(profile: Profile, viewModel: LunaViewModel, onDeepNavigate: (St
         item {
             Column {
                 Text(
-                    "Hello, ${profile.displayName.ifBlank { "there" }} 🌸",
+                    "Hello, ${profile.displayName.ifBlank { "there" }}",
                     style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
                 )
                 Text(
-                    "Your data is safe and private on this device.",
+                    "Your space for personal tracking and wellbeing.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -1288,8 +1257,16 @@ fun DashboardTab(profile: Profile, viewModel: LunaViewModel, onDeepNavigate: (St
                         if (lastLog == null) {
                             Icon(Icons.Default.CalendarMonth, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
                             Spacer(modifier = Modifier.height(12.dp))
-                            Text("Add your first period log to get cycle predictions",
-                                style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+                            Text("Start your cycle journey", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                "Add your latest period start date to begin seeing cycle estimates.",
+                                style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center
+                            )
+                            TextButton(onClick = { onQuickNavigate(SelfTrackingTab.Cycle) }) {
+                                Text("Add a period date")
+                                Icon(Icons.AutoMirrored.Filled.ArrowForward, null)
+                            }
                         } else {
                             val cycleDay = CycleUtils.getCurrentCycleDay(lastLog.startDate, todayStr)
                             val predicted = CycleUtils.getPredictedNextPeriod(lastLog.startDate, profile.averageCycleLength)
@@ -1311,8 +1288,11 @@ fun DashboardTab(profile: Profile, viewModel: LunaViewModel, onDeepNavigate: (St
                             }
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                if (daysUntil > 0) "$daysUntil days until next predicted period"
-                                else "Period predicted today",
+                                when {
+                                    daysUntil > 0 -> "Estimated next period in $daysUntil days"
+                                    daysUntil == 0L -> "Estimated period start: today"
+                                    else -> "Estimated date has passed; cycles can vary"
+                                },
                                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
                             )
                             Text(CycleUtils.getPhaseDescription(phase), style = MaterialTheme.typography.bodySmall,
@@ -1324,12 +1304,14 @@ fun DashboardTab(profile: Profile, viewModel: LunaViewModel, onDeepNavigate: (St
             }
         }
 
-        // Quick Actions
-        item {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                DashboardQuickCard("Log Flow", Icons.Default.WaterDrop, MutedRosePrimary, Modifier.weight(1f)) {}
-                DashboardQuickCard("Check-In", Icons.Default.Mood, LavenderSecondary, Modifier.weight(1f)) {}
-                DashboardQuickCard("Journal", Icons.Default.Create, WarmCoralTertiary, Modifier.weight(1f)) {}
+        // Actions are shown only when their destinations are available.
+        if (profile.userMode == UserMode.SELF_TRACKING.name) {
+            item {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    DashboardQuickCard("Log period", Icons.Default.WaterDrop, MutedRosePrimary, Modifier.weight(1f)) { onQuickNavigate(SelfTrackingTab.Cycle) }
+                    DashboardQuickCard("Check in", Icons.Default.Mood, LavenderSecondary, Modifier.weight(1f)) { onQuickNavigate(SelfTrackingTab.Mood) }
+                    DashboardQuickCard("Journal", Icons.Default.Create, WarmCoralTertiary, Modifier.weight(1f)) { onQuickNavigate(SelfTrackingTab.Journal) }
+                }
             }
         }
 
@@ -1431,8 +1413,9 @@ fun DashboardTab(profile: Profile, viewModel: LunaViewModel, onDeepNavigate: (St
 
 @Composable
 private fun DashboardQuickCard(label: String, icon: ImageVector, tint: Color, modifier: Modifier, onClick: () -> Unit) {
-    Card(modifier = modifier.clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+    Card(modifier = modifier.heightIn(min = 88.dp).clickable(onClick = onClick),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Column(modifier = Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(icon, null, tint = tint, modifier = Modifier.size(28.dp))
@@ -1489,7 +1472,11 @@ fun CycleTab(profile: Profile, viewModel: LunaViewModel) {
         item {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))) {
                 Column(modifier = Modifier.padding(12.dp)) {
-                    Text("⚠️ Safety Reminder", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("When to seek care", style = MaterialTheme.typography.titleSmall)
+                    }
                     Text("Heavy bleeding (soaking through pads/cups hourly) or severe cramps require medical assessment. Predictions are estimates — consult a doctor for medical advice.",
                         style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
                 }
@@ -1501,7 +1488,10 @@ fun CycleTab(profile: Profile, viewModel: LunaViewModel) {
                 Column(modifier = Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.CalendarToday, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f))
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("No logs yet. Tap 'Add Log' to track your first period.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                    Text("No periods recorded", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Add a start date to begin your private cycle history.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = { showLogDialog = true }) { Text("Add your first period") }
                 }
             }
         } else {
@@ -2029,7 +2019,13 @@ fun JournalTab(profile: Profile, viewModel: LunaViewModel) {
                 Column(modifier = Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.EditNote, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f))
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("No entries yet. Tap 'Write' to start your private journal.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                    Text(if (search.isBlank()) "Your journal is empty" else "No matching entries", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        if (search.isBlank()) "Write down what's on your mind whenever you're ready." else "Try a different search term.",
+                        style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (search.isBlank()) TextButton(onClick = { title = ""; body = ""; showDialog = true }) { Text("Write a reflection") }
                 }
             }
         } else {
@@ -2733,7 +2729,9 @@ fun NotificationPanelScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
                 Column(modifier = Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.NotificationsNone, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f))
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("No notifications yet. Reminders and care suggestions will appear here.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                    Text("You're all caught up", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Reminders and updates will appear here when available.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         } else {
@@ -2763,8 +2761,8 @@ fun NotificationPanelScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
                             Text(notif.title, fontWeight = if (!notif.isRead) FontWeight.Bold else FontWeight.Normal)
                             Text(notif.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
                         }
-                        IconButton(onClick = { viewModel.deleteNotification(notif.id) }, modifier = Modifier.size(32.dp)) {
-                            Icon(Icons.Default.Close, null, modifier = Modifier.size(16.dp))
+                        IconButton(onClick = { viewModel.deleteNotification(notif.id) }, modifier = Modifier.size(48.dp)) {
+                            Icon(Icons.Default.Close, "Delete notification", modifier = Modifier.size(20.dp))
                         }
                     }
                 }
@@ -2793,7 +2791,9 @@ fun BookmarksScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
                 Column(modifier = Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Outlined.BookmarkBorder, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f))
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("No bookmarks yet. Tap the bookmark icon on articles and products to save them here.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                    Text("Nothing saved yet", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Save an article to find it here later.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         } else {
