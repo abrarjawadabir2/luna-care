@@ -4,90 +4,307 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#FFF9F8">
-  <meta name="description" content="LunaCare is an open-source, privacy-conscious menstrual wellness project with cycle tracking, personal journaling and educational resources.">
+  <meta name="description" content="LunaCare is an open-source Android menstrual wellness project for cycle records, personal reflection, and reproductive health education.">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="LunaCare | A calmer way to understand your cycle">
-  <meta property="og:description" content="Private cycle tracking and thoughtful reproductive health education, built with care.">
-  <title>LunaCare | Understand your cycle, on your terms</title>
+  <meta property="og:title" content="LunaCare — A little more room to understand yourself">
+  <meta property="og:description" content="Cycle records, wellbeing reflections, and clear menstrual health information, on your terms.">
+  <title>LunaCare — Your cycle, your space</title>
   <style>
-    :root{color-scheme:light;--ink:#2c2021;--muted:#665354;--plum:#8a4d4e;--background:#fff9f8;--surface:#fff;--wash:#f9e9e8;--line:#ddc6c5;--accent:#5d5a84}
-    *{box-sizing:border-box}
-    html{scroll-behavior:smooth}
-    body{margin:0;background:var(--background);color:var(--ink);font:16px/1.65 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-    a{color:inherit}a:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:4px}
-    .wrap{width:min(1100px,calc(100% - 48px));margin:auto}
-    .skip{position:absolute;left:12px;top:-60px;background:white;padding:10px}.skip:focus{top:12px}
-    header{border-bottom:1px solid var(--line);background:rgba(255,249,248,.95)}
-    nav{min-height:76px;display:flex;align-items:center;justify-content:space-between;gap:24px}
-    .brand{font-weight:750;text-decoration:none;font-size:1.26rem;letter-spacing:-.035em}
-    .brand-mark{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:11px;background:var(--plum);color:white;font-size:1rem;margin-right:10px}
-    nav .links{display:flex;flex-wrap:wrap;gap:24px;font-size:.92rem}
-    nav .links a{text-decoration:none;color:var(--muted)} nav .links a:hover{color:var(--plum)}
-    .hero{padding:105px 0 104px;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(240px,.8fr);gap:55px;align-items:center}
-    .eyebrow{font-size:.8rem;font-weight:750;text-transform:uppercase;letter-spacing:.15em;color:var(--plum)}
-    h1{font-size:clamp(2.75rem,5.5vw,5rem);line-height:1.08;letter-spacing:-.065em;font-weight:730;margin:17px 0 24px}
-    .lead{font-size:1.15rem;max-width:39rem;color:var(--muted);margin:0 0 30px}
-    .actions{display:flex;flex-wrap:wrap;gap:13px}
-    .button{display:inline-block;text-decoration:none;padding:13px 22px;border-radius:12px;font-weight:650}
-    .button.primary{background:var(--plum);color:white}.button.secondary{border:1px solid var(--line);background:white}
-    .hero-art{aspect-ratio:1;max-width:380px;margin:auto;display:grid;place-items:center;background:radial-gradient(circle at 30% 23%,#fff,transparent 34%),linear-gradient(135deg,#f1d6d5,#e7e1ff);border-radius:50%;box-shadow:0 30px 65px #8a4d4e17}
-    .orbit{width:69%;aspect-ratio:1;border:2px solid #ffffffb5;border-radius:50%;display:grid;place-items:center;transform:rotate(-18deg)}
-    .inner{width:70%;aspect-ratio:1;border-radius:50%;background:#fffaf9;display:grid;place-items:center;transform:rotate(18deg);text-align:center;color:var(--plum);box-shadow:0 12px 34px #47242516}
-    .inner span{font-size:2.2rem;line-height:1}.inner small{display:block;font-weight:700;letter-spacing:.05em}
-    section{padding:82px 0}
-    .section-label{font-size:.8rem;font-weight:750;letter-spacing:.12em;text-transform:uppercase;color:var(--plum)}
-    h2{font-size:clamp(1.95rem,3.2vw,2.8rem);line-height:1.16;letter-spacing:-.045em;margin:10px 0 18px}
-    .intro{max-width:690px;color:var(--muted);margin:0 0 35px}
-    .features{background:white;border-top:1px solid var(--wash);border-bottom:1px solid var(--wash)}
-    .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
-    .card{padding:27px;border-radius:19px;background:var(--background);border:1px solid var(--wash)}
-    .card .number{font-size:.83rem;color:var(--plum);font-weight:750}
-    .card h3{font-size:1.14rem;line-height:1.3;margin:17px 0 9px}
-    .card p{color:var(--muted);margin:0;font-size:.96rem}
-    .privacy{display:grid;grid-template-columns:1fr 1fr;gap:70px;align-items:center}
-    .privacy-panel{border:1px solid var(--line);padding:29px;border-radius:18px;background:var(--surface)}
-    .privacy-panel strong{display:block;margin-bottom:11px}
-    .privacy-panel p{color:var(--muted);margin:0}
-    .release{background:var(--wash);text-align:center}
-    .release p{color:var(--muted);max-width:630px;margin:0 auto 24px}
-    .note{margin:25px 0 0;font-size:.85rem;color:var(--muted)}
-    footer{padding:35px 0;border-top:1px solid var(--line);font-size:.88rem;color:var(--muted)}
-    footer .wrap{display:flex;justify-content:space-between;gap:25px;flex-wrap:wrap}
-    @media(max-width:750px){.hero{grid-template-columns:1fr;padding:75px 0}.hero-art{width:250px}.cards{grid-template-columns:1fr}.privacy{grid-template-columns:1fr;gap:24px}nav .links{gap:12px}.wrap{width:min(100% - 32px,1100px)}section{padding:60px 0}}
-    @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+    :root {
+      color-scheme: light;
+      --paper: #fff9f8;
+      --white: #fff;
+      --ink: #2c2021;
+      --quiet: #665354;
+      --rose: #8a4d4e;
+      --rose-dark: #703d3e;
+      --pink: #f3d5d4;
+      --blush: #f9e9e8;
+      --violet: #5d5a84;
+      --line: #e2cecd;
+      --focus: #5d5a84;
+      --radius: 14px;
+      --content: 1120px;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font: 400 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    ::selection { background: var(--pink); color: var(--ink); }
+    a { color: inherit; text-underline-offset: .18em; }
+    :focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; border-radius: 3px; }
+    .container { width: min(var(--content), calc(100% - 48px)); margin-inline: auto; }
+    .skip { position: absolute; z-index: 10; top: -70px; left: 16px; padding: 12px 16px; background: var(--white); }
+    .skip:focus { top: 12px; }
+    .site-header { border-bottom: 1px solid var(--line); }
+    .header-inner { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font-size: 1.2rem; font-weight: 750; letter-spacing: -.025em; }
+    .brand svg { flex: none; color: var(--rose); }
+    .header-links { display: flex; align-items: center; flex-wrap: wrap; gap: clamp(14px, 2.5vw, 30px); }
+    .header-links a { color: var(--quiet); text-decoration: none; font-size: .92rem; font-weight: 570; padding: 12px 0; }
+    .header-links a:hover { color: var(--rose); text-decoration: underline; }
+
+    .hero { padding: clamp(78px, 10vw, 142px) 0 clamp(88px, 11vw, 152px); }
+    .hero-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(310px, .85fr); align-items: center; gap: clamp(48px, 7vw, 112px); }
+    h1, h2, h3, p { margin-top: 0; }
+    h1, h2 { text-wrap: balance; }
+    h1 {
+      max-width: 700px;
+      font-family: ui-serif, Georgia, "Times New Roman", serif;
+      font-size: clamp(3.3rem, 6.2vw, 5.8rem);
+      font-weight: 400;
+      line-height: 1.08;
+      letter-spacing: -.035em;
+      margin-bottom: 30px;
+    }
+    h1 em { font-weight: 400; font-style: italic; color: var(--rose); }
+    .hero .lead { font-size: clamp(1.05rem, 1.6vw, 1.24rem); line-height: 1.67; color: var(--quiet); max-width: 39rem; margin-bottom: 32px; text-wrap: pretty; }
+    .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 22px; }
+    .button {
+      display: inline-flex;
+      min-height: 48px;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 12px 20px;
+      border: 1px solid transparent;
+      border-radius: var(--radius);
+      text-decoration: none;
+      font-weight: 660;
+      transition: background-color 160ms ease-out, border-color 160ms ease-out;
+    }
+    .button.primary { background: var(--rose); color: white; }
+    .button.primary:hover { background: var(--rose-dark); }
+    .button.secondary { color: var(--rose); border-color: var(--line); background: transparent; }
+    .button.secondary:hover { border-color: var(--rose); }
+    .small-note { margin: 16px 0 0; color: var(--quiet); font-size: .81rem; }
+
+    /* An original, clearly illustrative note panel: no fake health records. */
+    .folio { padding: 18px; background: var(--blush); border-radius: 19px; }
+    .folio-page {
+      min-height: 405px;
+      padding: clamp(23px, 3.4vw, 36px);
+      background: var(--white);
+      border-radius: 11px;
+      display: flex;
+      flex-direction: column;
+      gap: 27px;
+      box-shadow: 0 14px 28px -20px rgba(44, 32, 33, .2);
+    }
+    .folio-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--quiet); font-size: .82rem; }
+    .folio-top svg { color: var(--rose); }
+    .folio-heading { margin: 0; font: 400 clamp(2rem, 3.2vw, 2.7rem)/1.19 ui-serif, Georgia, serif; letter-spacing: -.02em; }
+    .folio-sub { margin: 11px 0 0; color: var(--quiet); font-size: .91rem; }
+    .folio-rows { display: grid; gap: 0; margin-top: auto; }
+    .folio-row { display: flex; gap: 18px; align-items: center; min-height: 53px; border-top: 1px solid var(--line); }
+    .folio-row svg { flex: none; color: var(--rose); }
+    .folio-row span { font-weight: 560; }
+    .folio-row small { display: block; color: var(--quiet); font-weight: 400; font-size: .82rem; }
+    .folio-caption { color: var(--quiet); font-size: .74rem; margin: 12px 2px 0; }
+
+    .section { padding: clamp(78px, 9vw, 118px) 0; }
+    .section h2 { font: 400 clamp(2.4rem, 4.7vw, 4.1rem)/1.13 ui-serif, Georgia, serif; letter-spacing: -.025em; margin-bottom: 26px; }
+    .section p { color: var(--quiet); text-wrap: pretty; }
+    .feature-section { border-top: 1px solid var(--line); background: var(--white); }
+    .section-header { max-width: 760px; margin-bottom: clamp(40px, 5vw, 60px); }
+    .section-header p { font-size: 1.06rem; margin: 0; }
+    .feature-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(25px, 4vw, 55px); }
+    .feature { border-top: 2px solid var(--rose); padding-top: 22px; }
+    .feature h3 { font-size: 1.16rem; letter-spacing: -.02em; margin-bottom: 13px; }
+    .feature p { font-size: .95rem; margin-bottom: 0; }
+
+    .privacy-section { background: var(--blush); }
+    .privacy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(40px, 8vw, 116px); align-items: start; }
+    .privacy-grid .privacy-lead { font-size: 1.15rem; color: var(--ink); }
+    .privacy-points { margin: 0; padding: 0; list-style: none; }
+    .privacy-points li { padding: 20px 0; border-top: 1px solid rgba(138, 77, 78, .24); }
+    .privacy-points strong { display: block; color: var(--ink); margin-bottom: 4px; }
+    .privacy-points span { display: block; color: var(--quiet); font-size: .94rem; }
+
+    .release-grid { display: grid; grid-template-columns: 1fr 1fr; align-items: end; gap: 45px; }
+    .release-grid h2 { margin-bottom: 20px; }
+    .release-detail { border-top: 1px solid var(--line); padding-top: 24px; }
+    .release-detail p { font-size: .95rem; }
+    .release-detail .button { margin-top: 10px; }
+    .questions { border-top: 1px solid var(--line); background: var(--white); }
+    .questions-grid { display: grid; grid-template-columns: minmax(230px, .7fr) 1.3fr; gap: 75px; }
+    .questions h2 { font-size: clamp(2rem, 3.3vw, 3rem); }
+    details { border-bottom: 1px solid var(--line); }
+    summary { cursor: pointer; list-style-position: outside; padding: 21px 6px; min-height: 48px; font-weight: 660; }
+    details p { padding: 0 6px 22px; font-size: .95rem; max-width: 65ch; }
+    footer { padding: 30px 0; border-top: 1px solid var(--line); color: var(--quiet); font-size: .88rem; }
+    .footer-inner { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px 32px; }
+    footer a:hover { color: var(--rose); }
+    @media (max-width: 800px) {
+      .hero-grid { grid-template-columns: 1fr; gap: 54px; }
+      .folio { max-width: 550px; }
+      .privacy-grid, .release-grid { grid-template-columns: 1fr; gap: 30px; }
+      .questions-grid { grid-template-columns: 1fr; gap: 10px; }
+      .feature-list { gap: 22px; }
+    }
+    @media (max-width: 580px) {
+      .container { width: calc(100% - 36px); }
+      .header-inner { align-items: flex-start; flex-direction: column; justify-content: center; gap: 2px; padding-block: 14px; }
+      .header-links { gap: 16px; }
+      .hero { padding: 70px 0 82px; }
+      .feature-list { grid-template-columns: 1fr; }
+      .feature { padding-top: 17px; }
+      .folio-page { min-height: 350px; }
+      h1 { font-size: clamp(2.85rem, 12vw, 4.1rem); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .button { transition: none; }
+    }
   </style>
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
-  <header><nav class="wrap" aria-label="Primary navigation">
-    <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true">L</span>LunaCare</a>
-    <div class="links"><a href="#features">Features</a><a href="#privacy">Privacy</a><a href="#download">Download</a><a href="https://github.com/abrarjawadabir2/luna-care">Source code</a></div>
-  </nav></header>
-  <main id="main">
-    <div id="top" class="wrap hero">
-      <div><div class="eyebrow">Menstrual wellness, thoughtfully designed</div><h1>A calmer way to understand your cycle.</h1>
-      <p class="lead">Keep your own record of changes, reflect on how you feel, and explore reproductive health information without judgment.</p>
-      <div class="actions"><a class="button primary" href="#download">Explore downloads</a><a class="button secondary" href="#features">Explore the project</a></div></div>
-      <div class="hero-art" aria-hidden="true"><div class="orbit"><div class="inner"><div><span>◌</span><small>YOUR RHYTHM</small></div></div></div></div>
-    </div>
-    <section id="features" class="features"><div class="wrap"><div class="section-label">Designed for real life</div><h2>Understand your body in your own time.</h2>
-      <p class="intro">LunaCare's Android project brings together private tracking and educational tools. Individual features may change as development continues.</p>
-      <div class="cards">
-        <article class="card"><div class="number">01 / TRACK</div><h3>Cycle and flow</h3><p>Record period dates, flow and symptoms for a clearer picture of your personal patterns.</p></article>
-        <article class="card"><div class="number">02 / REFLECT</div><h3>Mood and journal</h3><p>Keep personal notes and reflect on wellbeing in a calm, organized space.</p></article>
-        <article class="card"><div class="number">03 / LEARN</div><h3>Thoughtful education</h3><p>Explore menstrual health and menstrual cup guidance, with reminders to seek clinical advice when needed.</p></article>
+  <header class="site-header">
+    <nav class="header-inner container" aria-label="Main navigation">
+      <a class="brand" href="#top" aria-label="LunaCare home">
+        <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true">
+          <path d="M22 6.5C18 6.5 14.8 9.8 14.8 14s3.2 7.5 7.2 7.5A10.2 10.2 0 1 1 22 6.5Z" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+          <circle cx="19.6" cy="11.3" r="1.3" fill="currentColor"/>
+        </svg>
+        LunaCare
+      </a>
+      <div class="header-links">
+        <a href="#approach">What it does</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#download">Get the app</a>
+        <a href="https://github.com/abrarjawadabir2/luna-care">GitHub</a>
       </div>
-    </div></section>
-    <section id="privacy"><div class="wrap privacy">
-      <div><div class="section-label">Privacy matters</div><h2>Your health notes deserve care.</h2><p class="intro">The Android application is designed around on-device records and limited data sharing. Security claims and cloud integrations are being verified before wider distribution.</p></div>
-      <div class="privacy-panel"><strong>Important boundaries</strong><p>This website does not collect cycle information, offer account registration, or send health data to an AI service. It is an informational page, not the LunaCare tracking application.</p></div>
-    </div></section>
-    <section class="release" id="download"><div class="wrap"><div class="section-label">Releases</div><h2>Follow LunaCare's progress.</h2>
-      <p>Android test builds and source updates are available on GitHub. Review each release's verification and signing status before installing. Windows and macOS desktop editions are not yet available.</p>
-      <a class="button primary" href="https://github.com/abrarjawadabir2/luna-care/releases">View Android releases</a>
-      <p class="note">For educational and personal tracking use only. LunaCare is not a medical device and cannot diagnose conditions or replace professional care.</p>
-    </div></section>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top" aria-labelledby="hero-title">
+      <div class="container hero-grid">
+        <div>
+          <h1 id="hero-title">Your cycle is personal. <em>Your space should be too.</em></h1>
+          <p class="lead">A place to make sense of changes, remember how you felt, and find menstrual health information without the noise.</p>
+          <div class="actions">
+            <a class="button primary" href="#download">Explore the Android app <span aria-hidden="true">→</span></a>
+            <a class="button secondary" href="#approach">See what LunaCare offers</a>
+          </div>
+          <p class="small-note">Open-source project · Android version in development</p>
+        </div>
+        <div class="folio" aria-label="Illustrative LunaCare information panel">
+          <div class="folio-page">
+            <div class="folio-top">
+              <span>What matters to you</span>
+              <svg width="27" height="27" viewBox="0 0 30 30" fill="none" aria-hidden="true">
+                <path d="M22 6.5C18 6.5 14.8 9.8 14.8 14s3.2 7.5 7.2 7.5A10.2 10.2 0 1 1 22 6.5Z" stroke="currentColor" stroke-width="2"/>
+              </svg>
+            </div>
+            <div>
+              <p class="folio-heading">A quieter way to check in.</p>
+              <p class="folio-sub">Make room for your own observations.</p>
+            </div>
+            <div class="folio-rows">
+              <div class="folio-row">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M7 3v4M17 3v4M3 10h18" stroke="currentColor" stroke-width="1.7"/></svg>
+                <div><span>Cycles</span><small>Record dates and flow</small></div>
+              </div>
+              <div class="folio-row">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 20h16M7 3h10a2 2 0 0 1 2 2v11l-4 4H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.7"/><path d="M9 8h6M9 12h6" stroke="currentColor" stroke-width="1.7"/></svg>
+                <div><span>Reflections</span><small>Journal in your own words</small></div>
+              </div>
+              <div class="folio-row">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 5.5C7 4 9.2 4 12 6c2.8-2 5-2 8-.5v14c-3-1.5-5.2-1.5-8 .5-2.8-2-5-2-8-.5v-14Z" stroke="currentColor" stroke-width="1.7"/><path d="M12 6v14" stroke="currentColor" stroke-width="1.7"/></svg>
+                <div><span>Learning</span><small>Explore reproductive health basics</small></div>
+              </div>
+            </div>
+          </div>
+          <p class="folio-caption">Illustrative information panel, not a live app screenshot or personal record.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section feature-section" id="approach" aria-labelledby="approach-title">
+      <div class="container">
+        <div class="section-header">
+          <h2 id="approach-title">Useful tools. No pressure to be perfect.</h2>
+          <p>LunaCare brings together a few everyday tasks so you can learn about your patterns at your own pace.</p>
+        </div>
+        <div class="feature-list">
+          <article class="feature">
+            <h3>Keep a cycle history</h3>
+            <p>Record start dates, flow, and symptoms. Cycle estimates are only estimates, not medical conclusions.</p>
+          </article>
+          <article class="feature">
+            <h3>Make sense of how you feel</h3>
+            <p>Use mood check-ins and a private journal to note what is important to you.</p>
+          </article>
+          <article class="feature">
+            <h3>Learn without judgment</h3>
+            <p>Read clear introductions to menstrual health and menstrual cup care, with clinical guidance when needed.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section privacy-section" id="privacy" aria-labelledby="privacy-title">
+      <div class="container privacy-grid">
+        <div>
+          <h2 id="privacy-title">Your information deserves more than a promise.</h2>
+          <p class="privacy-lead">The Android project is designed for local records, but a public health app needs security verified beyond its interface.</p>
+          <p>We're making the development and release boundaries clear, instead of suggesting unfinished cloud features are ready.</p>
+        </div>
+        <ul class="privacy-points">
+          <li><strong>No tracking on this page</strong><span>This static site doesn't collect cycle details, login information, or personal health records.</span></li>
+          <li><strong>Optional services need careful review</strong><span>Cloud and AI capabilities require explicit controls and a verified production backend.</span></li>
+          <li><strong>Medical care still matters</strong><span>LunaCare is educational. It cannot diagnose symptoms, prescribe treatment, or replace a clinician.</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section" id="download" aria-labelledby="download-title">
+      <div class="container release-grid">
+        <div>
+          <h2 id="download-title">Follow its progress. Try it thoughtfully.</h2>
+          <p>Browse the source and the Android builds while work continues on the production release.</p>
+        </div>
+        <div class="release-detail">
+          <p>Android development builds may be available on GitHub. They aren't a verified consumer release. Windows and macOS desktop versions have not been released.</p>
+          <a class="button primary" href="https://github.com/abrarjawadabir2/luna-care/releases">View GitHub releases <span aria-hidden="true">→</span></a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section questions" aria-labelledby="questions-title">
+      <div class="container questions-grid">
+        <h2 id="questions-title">Good to know</h2>
+        <div>
+          <details>
+            <summary>Is LunaCare a medical device?</summary>
+            <p>No. It is an educational and personal tracking project, not a diagnostic tool or a substitute for qualified medical care.</p>
+          </details>
+          <details>
+            <summary>Can I track my period on this website?</summary>
+            <p>Not on this page. This is an informational site. Cycle tracking lives in the Android application.</p>
+          </details>
+          <details>
+            <summary>Is there a Windows or Mac edition?</summary>
+            <p>Not yet. The project currently includes an Android app and this standalone informational page.</p>
+          </details>
+        </div>
+      </div>
+    </section>
   </main>
-  <footer><div class="wrap"><span>© 2026 LunaCare. Apache-2.0 project.</span><span><a href="https://github.com/abrarjawadabir2/luna-care">GitHub</a> · <a href="https://github.com/abrarjawadabir2/luna-care/blob/main/LICENSE">License</a></span></div></footer>
+
+  <footer>
+    <div class="container footer-inner">
+      <span>© 2026 LunaCare. Developed in the open.</span>
+      <div><a href="https://github.com/abrarjawadabir2/luna-care">Source code</a> · <a href="https://github.com/abrarjawadabir2/luna-care/blob/main/LICENSE">Apache 2.0 license</a></div>
+    </div>
+  </footer>
 </body>
 </html>
