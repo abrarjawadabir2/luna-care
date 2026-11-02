@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { sanitizeAuditMetadata, isProhibitedKey } from '../src/audit/audit.sanitizer.js';
 import { AuditService } from '../src/audit/audit.service.js';
 import { db } from '../src/database/index.js';
+import { AuthService } from '../src/auth/index.js';
 import { buildApp } from '../src/app.js';
 import { signUserToken } from '../src/api/middleware/auth.js';
 import type { FastifyInstance } from 'fastify';
@@ -102,12 +103,10 @@ describe('LunaCare Audit System & Privacy Sanitizer', () => {
 
   // TEST 4: Non-admin users cannot access audit logs endpoint
   test('4. Non-admin users cannot access audit logs (returns 403)', async () => {
-    const userToken = signUserToken({
-      id: 'regular_user_id',
-      email: 'user@example.com',
-      role: 'USER',
-      isPremium: false
+    const identity = await AuthService.register({
+      email: 'user-audit@example.com', password: 'Password123!', displayName: 'Regular User'
     });
+    const userToken = identity.token;
 
     const res = await app.inject({
       method: 'GET',
@@ -130,9 +129,14 @@ describe('LunaCare Audit System & Privacy Sanitizer', () => {
       metadata: { action: 'admin_login' }
     });
 
+    // Create a real account in the backing store; a token alone is not an account.
+    const identity = await AuthService.register({
+      email: 'admin-audit@example.com', password: 'Password123!', displayName: 'Admin User'
+    });
+    db.updateUser(identity.user.id, { role: 'ADMIN', isPremium: true });
     const adminToken = signUserToken({
-      id: 'admin_id',
-      email: 'admin@lunacare.internal',
+      id: identity.user.id,
+      email: identity.user.email,
       role: 'ADMIN',
       isPremium: true
     });
