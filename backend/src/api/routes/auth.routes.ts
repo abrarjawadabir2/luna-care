@@ -40,6 +40,14 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   // POST /api/v1/auth/otp/verify
   fastify.post('/otp/verify', { preHandler: otpVerifyLimiter }, AuthController.verifyOtp);
 
+  // Password-reset requests are sensitive even when their public response
+  // does not disclose whether an account exists.
+  const passwordResetLimiter = createRateLimiter({
+    maxLimit: 3,
+    windowMs: 10 * 60 * 1000,
+    keyPrefix: 'auth_password_reset'
+  });
+
   // POST /api/v1/auth/password-reset
-  fastify.post('/password-reset', AuthController.requestPasswordReset);
+  fastify.post('/password-reset', { preHandler: passwordResetLimiter }, AuthController.requestPasswordReset);
 };
