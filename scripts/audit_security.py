@@ -49,21 +49,19 @@ def hash_value(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 def load_audit_logs(filepath: str) -> list[dict[str, Any]]:
-    """Load audit logs from a JSON export file."""
+    """Load a real local audit export; never silently substitute synthetic data."""
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-        if isinstance(data, list):
-            return data
-        if isinstance(data, dict) and "logs" in data:
-            return data["logs"]
-        return []
-    except FileNotFoundError:
-        print(f"[WARN] Audit log file not found: {filepath}. Using sample data for dry-run.")
-        return _sample_audit_logs()
-    except json.JSONDecodeError as e:
-        print(f"[ERROR] Invalid JSON in audit log file: {e}")
-        return []
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise RuntimeError("Audit export unavailable or invalid; no events were checked.") from error
+
+    logs = data if isinstance(data, list) else data.get("logs") if isinstance(data, dict) else None
+    if not isinstance(logs, list) or not all(isinstance(item, dict) for item in logs):
+        raise ValueError("Expected a list of audit events; no events were checked.")
+    if not logs:
+        raise ValueError("Audit export contains no events; coverage is unknown.")
+    return logs
 
 def _sample_audit_logs() -> list[dict[str, Any]]:
     """Sample logs for dry-run mode when no export file is available."""
@@ -168,10 +166,9 @@ def generate_report(findings: list[dict], total_logs: int) -> dict:
         "pass": len(critical) == 0,
         "findings": findings,
         "safety_notes": [
-            "This report contains NO decrypted medical data",
-            "All IP hashes are SHA-256 — original IPs are never stored",
-            "This script is for administrative audit review only",
-            "LunaCare is educational only — this audit does not contain health diagnoses"
+            "Only the supplied events were checked; missing events and uncollected systems are outside coverage.",
+            "This report does not establish that an application or device is secure.",
+            "Do not upload exports containing private medical records or credentials."
         ]
     }
 
@@ -199,7 +196,15 @@ def main():
     print("  Educational app — no medical data processed here")
     print("=" * 60)
 
-    logs = load_audit_logs(args.input) if not args.dry_run else _sample_audit_logs()
+    if args.dry_run:
+        logs = _sample_audit_logs()
+        print("[INFO] Synthetic dry run only; no real events were inspected.")
+    else:
+        try:
+            logs = load_audit_logs(args.input)
+        except (RuntimeError, ValueError) as error:
+            print(f"[COVERAGE GAP] {error}", file=sys.stderr)
+            sys.exit(1)
     print(f"[INFO] Loaded {len(logs)} audit log entries")
 
     # Run all checks
@@ -212,6 +217,7 @@ def main():
 
     # Generate report
     report = generate_report(all_findings, len(logs))
+    report["coverage"] = "synthetic-dry-run" if args.dry_run else "provided-events-only"
     save_report(report, args.output)
 
     # Print summary
@@ -223,7 +229,8 @@ def main():
     print()
 
     if report["pass"]:
-        print("✅ AUDIT PASSED — no critical issues found")
+        print("✅ DRY-RUN VALIDATION PASSED (synthetic data only)" if args.dry_run else
+              "✅ AUDIT EVENT REVIEW COMPLETED — no critical patterns in supplied events; unobserved systems remain unchecked")
         sys.exit(0)
     else:
         print("❌ AUDIT FAILED — critical issues detected")
