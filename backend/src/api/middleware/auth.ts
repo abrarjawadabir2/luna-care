@@ -1,7 +1,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import jwt from 'jsonwebtoken';
 import { getEnv } from '../../config/env.js';
-import type { UserRole } from '../../database/index.js';
+import { db, type UserRole } from '../../database/index.js';
 import { AuditService } from '../../audit/audit.service.js';
 
 export interface AuthenticatedUser {
@@ -65,14 +65,21 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply) 
   try {
     const decoded = jwt.verify(token, env.JWT_SECRET, {
       issuer: JWT_ISSUER,
-      audience: JWT_AUDIENCE
+      audience: JWT_AUDIENCE,
+      algorithms: ['HS256']
     }) as TokenPayload;
 
+    // Only the token signature and subject are trusted here. Roles, premium
+    // entitlement, email and account existence must reflect current server state.
+    const currentUser = typeof decoded.sub === 'string' ? db.getUserById(decoded.sub) : null;
+    if (!currentUser) {
+      throw new Error('INVALID_OR_DELETED_ACCOUNT');
+    }
     request.user = {
-      id: decoded.sub,
-      email: decoded.email,
-      role: decoded.role,
-      isPremium: decoded.isPremium
+      id: currentUser.id,
+      email: currentUser.email,
+      role: currentUser.role,
+      isPremium: currentUser.isPremium
     };
   } catch (err) {
     return reply.status(401).send({
@@ -97,14 +104,21 @@ export async function optionalAuth(request: FastifyRequest, _reply: FastifyReply
   try {
     const decoded = jwt.verify(token, env.JWT_SECRET, {
       issuer: JWT_ISSUER,
-      audience: JWT_AUDIENCE
+      audience: JWT_AUDIENCE,
+      algorithms: ['HS256']
     }) as TokenPayload;
 
+    // Only the token signature and subject are trusted here. Roles, premium
+    // entitlement, email and account existence must reflect current server state.
+    const currentUser = typeof decoded.sub === 'string' ? db.getUserById(decoded.sub) : null;
+    if (!currentUser) {
+      throw new Error('INVALID_OR_DELETED_ACCOUNT');
+    }
     request.user = {
-      id: decoded.sub,
-      email: decoded.email,
-      role: decoded.role,
-      isPremium: decoded.isPremium
+      id: currentUser.id,
+      email: currentUser.email,
+      role: currentUser.role,
+      isPremium: currentUser.isPremium
     };
   } catch {
     // If optional token is invalid, simply proceed as unauthenticated
