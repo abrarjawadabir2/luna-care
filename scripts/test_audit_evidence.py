@@ -58,6 +58,25 @@ class AuditEvidenceTests(unittest.TestCase):
             self.assertEqual(report["coverage"], "synthetic-dry-run")
             self.assertIn("synthetic data only", result.stdout)
 
+    def test_auth_failure_spike_and_sensitive_metadata_fail_audit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file = Path(directory) / "events.json"
+            output = Path(directory) / "result.json"
+            events = [
+                {"eventId": f"e{i}", "eventType": "auth.login.failure", "result": "failure", "timestamp": "2026-11-04T00:00:00Z", "metadata": {}}
+                for i in range(4)
+            ] + [
+                {"eventId": "e5", "eventType": "journal.entry.created", "result": "success", "timestamp": "2026-11-04T00:01:00Z", "metadata": {"notesEncrypted": "secret-blob"}}
+            ]
+            file.write_text(json.dumps(events), encoding="utf-8")
+            result = self.invoke("--input", file, "--output", output)
+            self.assertEqual(result.returncode, 1)
+            report = json.loads(output.read_text(encoding="utf-8"))
+            self.assertFalse(report["pass"])
+            rules = {f["rule"] for f in report["findings"]}
+            self.assertIn("AUTH_FAILURE_SPIKE", rules)
+            self.assertIn("SENSITIVE_METADATA_KEY", rules)
+
 
 if __name__ == "__main__":
     unittest.main()

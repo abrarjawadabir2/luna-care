@@ -885,6 +885,7 @@ fun OnboardingStep7PinAndDisclaimer(
 fun PinAuthScreen(storedPin: String, onAuthenticated: (String) -> Boolean) {
     var pinInput by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
+    val expectedPinLength = remember(storedPin) { SecurityUtils.extractPinLength(storedPin) }
 
     Column(
         modifier = Modifier.fillMaxSize().statusBarsPadding().padding(24.dp),
@@ -907,7 +908,7 @@ fun PinAuthScreen(storedPin: String, onAuthenticated: (String) -> Boolean) {
                 textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp, start = 32.dp, end = 32.dp))
             Spacer(modifier = Modifier.height(40.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                repeat(storedPin.length) { i ->
+                repeat(expectedPinLength) { i ->
                     Box(
                         modifier = Modifier.size(16.dp).clip(CircleShape)
                             .background(if (i < pinInput.length) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
@@ -929,9 +930,9 @@ fun PinAuthScreen(storedPin: String, onAuthenticated: (String) -> Boolean) {
                                 .clickable(enabled = digit.isNotEmpty()) {
                                     if (digit == "Delete") {
                                         if (pinInput.isNotEmpty()) pinInput = pinInput.dropLast(1)
-                                    } else if (pinInput.length < storedPin.length) {
+                                    } else if (pinInput.length < expectedPinLength) {
                                         pinInput += digit
-                                        if (pinInput.length == storedPin.length) {
+                                        if (pinInput.length == expectedPinLength) {
                                             if (!onAuthenticated(pinInput)) {
                                                 errorMessage = "Incorrect passcode. Please try again."
                                                 pinInput = ""

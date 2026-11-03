@@ -167,11 +167,10 @@ export function requireOwnership(resourceOwnerId: string, request: FastifyReques
     return false;
   }
 
-  // Super admins may have administrative access, but regular users CANNOT access other users' data
-  const isSuperAdmin = request.user.role === 'SUPER_ADMIN';
+  // Strict user isolation on private health records: no admin bypass (matches PostgreSQL RLS policy)
   const isOwner = request.user.id === resourceOwnerId;
 
-  if (!isOwner && !isSuperAdmin) {
+  if (!isOwner) {
     AuditService.recordEvent({
       eventType: 'security.authorization.denied',
       userId: request.user.id,
@@ -180,7 +179,7 @@ export function requireOwnership(resourceOwnerId: string, request: FastifyReques
       resourceId: resourceOwnerId,
       result: 'denied',
       reasonCode: 'CROSS_USER_ACCESS_ATTEMPT',
-      metadata: { attemptedOwnerId: resourceOwnerId }
+      metadata: { attemptedOwnerId: resourceOwnerId, callerRole: request.user.role }
     });
 
     reply.status(403).send({

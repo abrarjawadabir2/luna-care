@@ -61,11 +61,12 @@ export class JournalController {
       return;
     }
 
-    db.deleteMedicalJournal(entryId, existing.userId);
+    const actorUserId = request.user!.id;
+    db.deleteMedicalJournal(entryId, actorUserId);
 
     await AuditService.recordEvent({
       eventType: 'journal.entry.deleted',
-      userId: existing.userId,
+      userId: actorUserId,
       requestId: request.requestId,
       resourceType: 'journal_entry',
       resourceId: entryId,

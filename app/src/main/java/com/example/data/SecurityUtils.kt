@@ -4,10 +4,14 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import java.security.KeyStore
+import java.security.MessageDigest
+import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.PBEKeySpec
 
 /**
  * SecurityUtils — AES-256-GCM encryption using Android Keystore.
@@ -31,15 +35,82 @@ object SecurityUtils {
     private const val TRANSFORMATION = "AES/GCM/NoPadding"
     private const val GCM_IV_LENGTH = 12 // bytes
     private const val GCM_TAG_LENGTH = 128 // bits
+    private const val PIN_HASH_PREFIX = "pbkdf2"
+    private const val PIN_PBKDF2_ITERATIONS = 120_000
+    private const val PIN_SALT_BYTES = 16
+    private const val PIN_KEY_BITS = 256
 
     /**
      * Hashes a string (e.g. IP address or user-agent) using SHA-256.
      * Hashed value can be stored in audit_logs without exposing raw data.
      */
     fun hashForAudit(input: String): String {
-        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        val digest = MessageDigest.getInstance("SHA-256")
         val hashBytes = digest.digest(input.toByteArray(Charsets.UTF_8))
         return java.util.Base64.getEncoder().encodeToString(hashBytes)
+    }
+
+    /**
+     * Hashes a user passcode/PIN using PBKDF2-HMAC-SHA256 with a random 128-bit salt.
+     * Format: pbkdf2$<pinLength>$<saltBase64>$<hashBase64>
+     */
+    fun hashPin(pin: String): String {
+        require(pin.isNotEmpty()) { "PIN cannot be empty" }
+        val salt = ByteArray(PIN_SALT_BYTES)
+        SecureRandom().nextBytes(salt)
+        val derived = derivePinBytes(pin, salt, PIN_PBKDF2_ITERATIONS)
+        val encoder = java.util.Base64.getEncoder().withoutPadding()
+        val saltB64 = encoder.encodeToString(salt)
+        val hashB64 = encoder.encodeToString(derived)
+        return "$PIN_HASH_PREFIX$${pin.length}$$saltB64$$hashB64"
+    }
+
+    /**
+     * Verifies a candidate PIN against a stored PBKDF2 hash (or legacy plaintext PIN)
+     * using constant-time byte comparison.
+     */
+    fun verifyPin(input: String, stored: String): Boolean {
+        if (input.isEmpty() || stored.isEmpty()) return false
+        if (stored.startsWith("$PIN_HASH_PREFIX$")) {
+            val parts = stored.split("$")
+            if (parts.size != 4) return false
+            return try {
+                val decoder = java.util.Base64.getDecoder()
+                val salt = decoder.decode(parts[2])
+                val expectedHash = decoder.decode(parts[3])
+                val computedHash = derivePinBytes(input, salt, PIN_PBKDF2_ITERATIONS)
+                MessageDigest.isEqual(computedHash, expectedHash)
+            } catch (e: Exception) {
+                false
+            }
+        }
+        return MessageDigest.isEqual(
+            input.toByteArray(Charsets.UTF_8),
+            stored.toByteArray(Charsets.UTF_8)
+        )
+    }
+
+    /**
+     * Extracts the expected PIN digit length from an encoded PIN hash or legacy PIN string.
+     */
+    fun extractPinLength(stored: String): Int {
+        if (stored.startsWith("$PIN_HASH_PREFIX$")) {
+            val parts = stored.split("$")
+            if (parts.size == 4) {
+                return parts[1].toIntOrNull()?.coerceIn(4, 12) ?: 4
+            }
+        }
+        return stored.length.coerceIn(4, 12)
+    }
+
+    private fun derivePinBytes(pin: String, salt: ByteArray, iterations: Int): ByteArray {
+        val spec = PBEKeySpec(pin.toCharArray(), salt, iterations, PIN_KEY_BITS)
+        return try {
+            val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+            factory.generateSecret(spec).encoded
+        } finally {
+            spec.clearPassword()
+        }
     }
 
     private fun getOrCreateSecretKey(): SecretKey {

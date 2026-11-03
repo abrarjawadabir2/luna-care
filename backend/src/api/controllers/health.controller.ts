@@ -54,7 +54,7 @@ export class HealthController {
       return;
     }
 
-    db.deleteBehaviourLog(logId, existing.userId);
+    db.deleteBehaviourLog(logId, request.user!.id);
     return reply.status(200).send({ success: true, id: logId });
   }
 }

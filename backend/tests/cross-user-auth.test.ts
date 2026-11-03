@@ -148,5 +148,26 @@ describe('Cross-User Authorization & Strict Data Isolation', () => {
     // Verify User B profile was updated
     const userBProfile = db.getProfile(userB.user.id);
     assert.equal(userBProfile?.displayName, 'Hacked Name');
+
+    // -------------------------------------------------------------------------
+    // VERIFICATION: Even SUPER_ADMIN cannot delete another user's private health records
+    // (Enforces strict parity with PostgreSQL RLS policy on health tables)
+    // -------------------------------------------------------------------------
+    db.updateUser(userB.user.id, { role: 'SUPER_ADMIN' });
+    const adminDelJournal = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/journal/${journalId}`,
+      headers: { authorization: `Bearer ${userB.token}` }
+    });
+    assert.equal(adminDelJournal.statusCode, 403, 'SUPER_ADMIN must not delete another user medical journal');
+    assert.ok(db.getMedicalJournalById(journalId), 'User A journal entry must remain intact');
+
+    const adminDelPeriod = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/periods/${periodId}`,
+      headers: { authorization: `Bearer ${userB.token}` }
+    });
+    assert.equal(adminDelPeriod.statusCode, 403, 'SUPER_ADMIN must not delete another user period log');
+    assert.ok(db.getPeriodLogById(periodId), 'User A period log must remain intact');
   });
 });

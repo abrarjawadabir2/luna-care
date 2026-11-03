@@ -70,6 +70,19 @@ backend/.env
 backend-rust/.env
 *.keystore
 *.jks
+*.pem
+*.key
+*.p12
+*.pfx
+secrets.properties
+apikey.properties
+api_keys.properties
+*api_key*
+*apikey*
+google-services.json
+service-account*.json
+credentials.json
+client_secret*.json
 
 # MCP and local secret configs
 .mcp.local.json

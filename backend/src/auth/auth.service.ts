@@ -154,7 +154,12 @@ export class AuthService {
   }
 
   // 3. OTP REQUEST
-  static async requestOtp(phone: string): Promise<{ success: boolean; message: string; devCode?: string }> {
+  static async requestOtp(phone: string): Promise<{
+    success: boolean;
+    deliveryImplemented: boolean;
+    message: string;
+    devCode?: string;
+  }> {
     const hashedPhone = purposeSeparatedHash('phone_rate_limit', phone);
     const code = generateSecureOtp();
     const codeHash = purposeSeparatedHash('token_fingerprint', code);
@@ -173,17 +178,18 @@ export class AuthService {
       eventType: 'auth.otp.request',
       resourceType: 'phone',
       result: 'success',
-      metadata: { phoneHash: hashedPhone }
+      metadata: { phoneHash: hashedPhone, deliveryConfigured: false }
     });
 
-    logger.info('otp.requested', { phoneHash: hashedPhone, expiresInSeconds: 300 });
+    logger.info('otp.requested', { phoneHash: hashedPhone, expiresInSeconds: 300, deliveryConfigured: false });
 
     // In non-production testing environment, return devCode for automated integration tests
     const devCode = process.env['NODE_ENV'] === 'test' ? code : undefined;
 
     return {
       success: true,
-      message: 'Verification code dispatched if phone is eligible.',
+      deliveryImplemented: false,
+      message: 'Verification code generated in local store; external SMS delivery is not configured.',
       ...(devCode ? { devCode } : {})
     };
   }

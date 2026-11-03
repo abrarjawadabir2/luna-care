@@ -126,9 +126,16 @@ describe('Signed token session and password reset security', () => {
         payload: { email }
       });
       assert.equal(response.statusCode, 200);
+      assert.equal(response.json().deliveryImplemented, false);
       messages.push(response.json().message);
     }
     assert.equal(new Set(messages).size, 1);
+
+    const auditLogs = db.getAuditLogs();
+    const resetAudit = auditLogs.find((e) => e.action === 'auth.password_reset.request');
+    assert.ok(resetAudit);
+    assert.equal('emailDomain' in resetAudit.metadata, false, 'Must not log raw email domain in audit metadata');
+    assert.equal(typeof resetAudit.metadata['accountHash'], 'string');
 
     const blocked = await app.inject({
       method: 'POST',

@@ -45,7 +45,7 @@ export class PeriodsController {
       return;
     }
 
-    db.deletePeriodLog(logId, existing.userId);
+    db.deletePeriodLog(logId, request.user!.id);
     return reply.status(200).send({ success: true, id: logId });
   }
 }

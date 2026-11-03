@@ -13,12 +13,19 @@ import { uploadsRoutes } from './uploads.routes.js';
 import { auditRoutes } from './audit.routes.js';
 import { UsersController } from '../controllers/index.js';
 import { requireAuth } from '../middleware/auth.js';
+import { createRateLimiter } from '../middleware/rateLimit.js';
 
 export const apiV1Routes: FastifyPluginAsync = async (fastify) => {
+  const publicProfileLimiter = createRateLimiter({
+    maxLimit: 60,
+    windowMs: 60 * 1000,
+    keyPrefix: 'public_profile'
+  });
+
   // Direct routes for authenticated user private profile and public username profile (Req 92, 110)
   fastify.get('/me', { preHandler: requireAuth }, UsersController.getProfile);
   fastify.patch('/me', { preHandler: requireAuth }, UsersController.updateProfile);
-  fastify.get('/u/:username', UsersController.getPublicProfile);
+  fastify.get('/u/:username', { preHandler: publicProfileLimiter }, UsersController.getPublicProfile);
 
   await fastify.register(healthRoutes, { prefix: '/health' });
   await fastify.register(authRoutes, { prefix: '/auth' });
