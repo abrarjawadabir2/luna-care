@@ -445,4 +445,37 @@ describe('LunaCare Backend Security Boundaries & Threat Defenses', () => {
     assert.equal(content.includes('ghp_'), false, 'MCP config must not contain GitHub tokens');
     assert.ok(content.includes('${CONTEXT7_API_KEY}'), 'MCP config must use environment variable interpolation');
   });
+
+  // TEST 31: Upload filename extension spoofing is neutralized to match verified magic bytes
+  test('31. Upload with valid PNG magic bytes and .html/.svg filename is stored strictly with .png extension', async () => {
+    const validPng = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D]);
+    const result = await UploadService.inspectAndStore({
+      originalFilename: 'polyglot_payload.html',
+      claimedContentType: 'image/png',
+      base64Data: validPng.toString('base64'),
+      userId: 'user_ext_test'
+    });
+
+    assert.equal(result.valid, true);
+    assert.ok(result.safeKey.endsWith('.png'), `Expected safeKey to end with .png, got ${result.safeKey}`);
+    assert.equal(result.safeKey.endsWith('.html'), false);
+  });
+
+  // TEST 32: Rate limiter custom key extractors receive hashed IP and never store raw client IP
+  test('32. Rate limiter custom extractKey receives HMAC-hashed IP, not raw client IP', async () => {
+    rateLimiter.reset();
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/users/username-availability?username=privacy_test_user',
+      remoteAddress: '203.0.113.42'
+    });
+    assert.equal(res.statusCode, 200);
+    assert.ok(res.headers['x-ratelimit-limit']);
+
+    const buckets = (rateLimiter as unknown as { buckets: Map<string, unknown> }).buckets;
+    for (const key of buckets.keys()) {
+      assert.equal(key.includes('203.0.113.42'), false, `Rate limit key must not contain plaintext IP: ${key}`);
+      assert.equal(key.includes('127.0.0.1'), false, `Rate limit key must not contain plaintext IP: ${key}`);
+    }
+  });
 });

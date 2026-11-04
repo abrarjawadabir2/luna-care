@@ -9,20 +9,27 @@ export const usersRoutes: FastifyPluginAsync = async (fastify) => {
     maxLimit: 5,
     windowMs: 60 * 60 * 1000,
     keyPrefix: 'account_op',
-    extractKey: (req) => req.user?.id || req.ip || 'anonymous'
+    extractKey: (req, hashedIp) => req.user?.id || hashedIp
   });
 
   // Rate limiter for username availability checks (Req 94)
-  // Anonymous: limited per IP (e.g. 60/min)
-  // Authenticated: limited per user + IP (e.g. 100/min)
+  // Anonymous: limited per hashed IP (e.g. 60/min)
+  // Authenticated: limited per user + hashed IP
   const usernameAvailabilityLimiter = createRateLimiter({
     maxLimit: 60,
     windowMs: 60 * 1000,
     keyPrefix: 'username_avail',
-    extractKey: (req) => {
+    extractKey: (req, hashedIp) => {
       const user = req.user;
-      return user?.id ? `auth_${user.id}_${req.ip || 'ip'}` : (req.ip || 'anon');
+      return user?.id ? `auth_${user.id}_${hashedIp}` : hashedIp;
     }
+  });
+
+  // Rate limiter for public profile lookup by username to deter automated scraping
+  const publicProfileLimiter = createRateLimiter({
+    maxLimit: 60,
+    windowMs: 60 * 1000,
+    keyPrefix: 'public_profile'
   });
 
   // 1. GET /api/v1/users/username-availability?username=... (Public / Authenticated with rate limiting)
@@ -43,5 +50,5 @@ export const usersRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/export', { preHandler: [requireAuth, accountOpLimiter] }, UsersController.exportAccount);
 
   // 6. GET /api/v1/users/:username (Public allowlisted profile lookup, Req 92, 110)
-  fastify.get('/:username', UsersController.getPublicProfile);
+  fastify.get('/:username', { preHandler: publicProfileLimiter }, UsersController.getPublicProfile);
 };

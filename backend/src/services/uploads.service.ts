@@ -1,8 +1,14 @@
 import crypto from 'node:crypto';
-import path from 'node:path';
 import { logger } from '../utils/logger.js';
 import { AuditService } from '../audit/audit.service.js';
 import { db } from '../database/index.js';
+
+const EXTENSION_BY_MIME: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'application/pdf': '.pdf',
+};
 
 export interface InspectionResult {
   valid: boolean;
@@ -105,10 +111,9 @@ export class UploadService {
       };
     }
 
-    // 4. Generate random, unguessable storage key (UUID) to prevent path traversal & overwrites
-    // Strip any path traversal attempts from original filename
-    const sanitizedExt = path.extname(path.basename(input.originalFilename)).toLowerCase().replace(/[^a-z0-9.]/g, '');
-    const extension = sanitizedExt || (inspection.mime === 'image/jpeg' ? '.jpg' : inspection.mime === 'image/png' ? '.png' : inspection.mime === 'image/webp' ? '.webp' : '.pdf');
+    // 4. Generate random, unguessable storage key (UUID) to prevent path traversal & overwrites.
+    // Derive extension strictly from verified magic-byte MIME type (never trust client-supplied filename extension).
+    const extension = EXTENSION_BY_MIME[inspection.mime] ?? '.bin';
     const safeKey = `user_${input.userId}_${crypto.randomUUID()}${extension}`;
     const uploadId = crypto.randomUUID();
 

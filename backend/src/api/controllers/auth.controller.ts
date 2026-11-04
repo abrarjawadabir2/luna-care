@@ -8,6 +8,7 @@ import {
   passwordResetRequestSchema
 } from '../schemas/index.js';
 import { AuditService } from '../../audit/audit.service.js';
+import { purposeSeparatedHash } from '../../security/index.js';
 
 export class AuthController {
   static async register(request: FastifyRequest, reply: FastifyReply) {
@@ -79,11 +80,15 @@ export class AuthController {
       eventType: 'auth.password_reset.request',
       resourceType: 'user',
       result: 'success',
-      metadata: { emailDomain: input.email.split('@')[1] }
+      metadata: {
+        accountHash: purposeSeparatedHash('audit_reference', input.email),
+        deliveryConfigured: false
+      }
     });
 
     return reply.status(200).send({
-      message: 'If that email is registered, you will receive a reset link.'
+      deliveryImplemented: false,
+      message: 'Password reset request recorded; external email delivery is not configured.'
     });
   }
 }

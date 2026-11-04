@@ -61,15 +61,15 @@ export function createRateLimiter(options: {
   maxLimit: number;
   windowMs: number;
   keyPrefix: string;
-  extractKey?: (req: FastifyRequest) => string;
+  extractKey?: (req: FastifyRequest, hashedIp: string) => string;
 }) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     // Hash client IP with purpose-separated HMAC to prevent plaintext IP storage
     const ip = request.ip || '127.0.0.1';
     const hashedIp = purposeSeparatedHash('ip_rate_limit', ip);
 
-    // Derive identifier: custom extractor or hashed IP
-    const subKey = options.extractKey ? options.extractKey(request) : hashedIp;
+    // Derive identifier: custom extractor (receiving pre-hashed IP) or hashed IP
+    const subKey = options.extractKey ? options.extractKey(request, hashedIp) : hashedIp;
     const bucketKey = `${options.keyPrefix}:${subKey}`;
 
     const result = rateLimiter.consume(bucketKey, options.maxLimit, options.windowMs);

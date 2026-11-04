@@ -35,10 +35,59 @@ from typing import Any
 # CONFIGURATION
 # ==========================================
 
-CRITICAL_ACTIONS = {"delete", "export"}
+CRITICAL_ACTIONS = {
+    "delete",
+    "export",
+    "account.deleted",
+    "account.delete.requested",
+    "journal.entry.deleted",
+    "account.export.requested",
+}
+DELETE_ACTIONS = {
+    "delete",
+    "account.deleted",
+    "account.delete.requested",
+    "journal.entry.deleted",
+}
+EXPORT_ACTIONS = {
+    "export",
+    "account.export.requested",
+}
+AUTH_FAILURE_ACTIONS = {
+    "login_failed",
+    "auth.login.failure",
+    "auth.otp.failure",
+}
+PROHIBITED_METADATA_KEYS = {
+    "password",
+    "passwordhash",
+    "password_hash",
+    "otp",
+    "token",
+    "secret",
+    "pin",
+    "securitypin",
+    "notes",
+    "notesencrypted",
+    "notes_encrypted",
+    "latitude",
+    "longitude",
+    "rawip",
+    "raw_ip",
+}
 SUSPICIOUS_ROLES = {"ADMIN", "SUPER_ADMIN"}
 DELETE_SPIKE_THRESHOLD = 5    # More than 5 deletes in one session = suspicious
 AUTH_FAIL_THRESHOLD = 3       # More than 3 failed logins = suspicious
+
+
+def _event_action(log: dict[str, Any]) -> str:
+    """Return normalized action or eventType from local Room or backend audit records."""
+    raw = log.get("action") or log.get("eventType") or ""
+    return str(raw).strip()
+
+
+def _event_timestamp(log: dict[str, Any]) -> Any:
+    return log.get("createdAt") or log.get("timestamp")
 
 # ==========================================
 # UTILITY FUNCTIONS
@@ -80,26 +129,45 @@ def check_critical_actions(logs: list[dict]) -> list[dict]:
     """Flag delete and export actions for review."""
     findings = []
     for log in logs:
-        if log.get("action") in CRITICAL_ACTIONS:
+        action = _event_action(log)
+        if action in CRITICAL_ACTIONS:
             findings.append({
                 "severity": "WARNING",
                 "rule": "CRITICAL_ACTION",
-                "message": f"Critical action '{log.get('action')}' on '{log.get('resourceType')}' by role '{log.get('actorRole')}'",
-                "logId": log.get("id"),
-                "timestamp": log.get("createdAt")
+                "message": f"Critical action '{action}' on '{log.get('resourceType')}' by role '{log.get('actorRole', 'UNKNOWN')}'",
+                "logId": log.get("id") or log.get("eventId"),
+                "timestamp": _event_timestamp(log)
             })
     return findings
 
 def check_delete_spike(logs: list[dict]) -> list[dict]:
     """Flag if more than DELETE_SPIKE_THRESHOLD deletes occur."""
     findings = []
-    deletes = [l for l in logs if l.get("action") == "delete"]
+    deletes = [l for l in logs if _event_action(l) in DELETE_ACTIONS]
     if len(deletes) > DELETE_SPIKE_THRESHOLD:
         findings.append({
             "severity": "CRITICAL",
             "rule": "DELETE_SPIKE",
             "message": f"Unusual number of delete events: {len(deletes)} (threshold: {DELETE_SPIKE_THRESHOLD})",
             "count": len(deletes)
+        })
+    return findings
+
+def check_auth_failures(logs: list[dict]) -> list[dict]:
+    """Flag if more than AUTH_FAIL_THRESHOLD authentication failures occur."""
+    findings = []
+    failures = [
+        l for l in logs
+        if _event_action(l) in AUTH_FAILURE_ACTIONS or (
+            _event_action(l).startswith("auth.") and l.get("result") in {"failure", "denied"}
+        )
+    ]
+    if len(failures) > AUTH_FAIL_THRESHOLD:
+        findings.append({
+            "severity": "CRITICAL",
+            "rule": "AUTH_FAILURE_SPIKE",
+            "message": f"Failed authentication spike detected: {len(failures)} events (threshold: {AUTH_FAIL_THRESHOLD})",
+            "count": len(failures)
         })
     return findings
 
@@ -119,31 +187,58 @@ def check_admin_activity(logs: list[dict]) -> list[dict]:
 def check_export_events(logs: list[dict]) -> list[dict]:
     """Flag data export events — highest risk in health apps."""
     findings = []
-    exports = [l for l in logs if l.get("action") == "export"]
+    exports = [l for l in logs if _event_action(l) in EXPORT_ACTIONS]
     for exp in exports:
         findings.append({
             "severity": "CRITICAL",
             "rule": "DATA_EXPORT",
-            "message": f"Data export event detected: resource '{exp.get('resourceType')}' at {exp.get('createdAt')}",
-            "logId": exp.get("id")
+            "message": f"Data export event detected: resource '{exp.get('resourceType')}' at {_event_timestamp(exp)}",
+            "logId": exp.get("id") or exp.get("eventId")
         })
     return findings
 
 def check_metadata_for_sensitive_content(logs: list[dict]) -> list[dict]:
     """
-    Ensure no decrypted medical content is leaking into audit metadata.
-    Flags any metadata field containing suspiciously long text.
+    Ensure no decrypted medical content or prohibited secret/PII keys leak into audit metadata.
+    Flags oversized metadata strings/objects and prohibited sensitive key names.
     """
     findings = []
     for log in logs:
+        log_id = log.get("id") or log.get("eventId")
         metadata = log.get("metadata", "{}")
-        if isinstance(metadata, str) and len(metadata) > 500:
+        serialized = metadata if isinstance(metadata, str) else json.dumps(metadata, default=str)
+
+        if len(serialized) > 500:
             findings.append({
                 "severity": "WARNING",
                 "rule": "METADATA_TOO_LARGE",
                 "message": "Audit log metadata may contain sensitive content — metadata should be minimal",
-                "logId": log.get("id")
+                "logId": log_id
             })
+
+        parsed_meta: dict[str, Any] | None = None
+        if isinstance(metadata, dict):
+            parsed_meta = metadata
+        elif isinstance(metadata, str):
+            try:
+                candidate = json.loads(metadata)
+                if isinstance(candidate, dict):
+                    parsed_meta = candidate
+            except json.JSONDecodeError:
+                parsed_meta = None
+
+        if parsed_meta:
+            leaked_keys = [
+                k for k in parsed_meta.keys()
+                if str(k).lower().replace("-", "_") in PROHIBITED_METADATA_KEYS
+            ]
+            if leaked_keys:
+                findings.append({
+                    "severity": "CRITICAL",
+                    "rule": "SENSITIVE_METADATA_KEY",
+                    "message": f"Prohibited sensitive key(s) found in audit metadata: {sorted(leaked_keys)}",
+                    "logId": log_id
+                })
     return findings
 
 # ==========================================
@@ -211,6 +306,7 @@ def main():
     all_findings = []
     all_findings.extend(check_critical_actions(logs))
     all_findings.extend(check_delete_spike(logs))
+    all_findings.extend(check_auth_failures(logs))
     all_findings.extend(check_admin_activity(logs))
     all_findings.extend(check_export_events(logs))
     all_findings.extend(check_metadata_for_sensitive_content(logs))

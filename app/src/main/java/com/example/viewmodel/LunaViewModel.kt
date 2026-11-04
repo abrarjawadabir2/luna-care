@@ -161,7 +161,7 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
                 behaviourFocuses = behaviourFocuses,
                 locationPrivacyMode = LocationPrivacyMode.OFF.name,
                 securityPinEnabled = hasPin,
-                securityPin = pin,
+                securityPin = if (hasPin) SecurityUtils.hashPin(pin) else "",
                 role = UserRole.USER.name
             )
             repository.saveProfile(newProfile)
@@ -185,7 +185,7 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
 
         val currentProfile = profile.value
         return if (currentProfile != null && currentProfile.securityPinEnabled) {
-            val matches = currentProfile.securityPin == input
+            val matches = SecurityUtils.verifyPin(input, currentProfile.securityPin)
             if (matches) {
                 _isPinAuthenticated.value = true
                 failedPinAttempts = 0

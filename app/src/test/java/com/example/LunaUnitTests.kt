@@ -442,6 +442,21 @@ class LunaUnitTests {
         }
     }
 
+    @Test
+    fun `PIN hashing uses salted PBKDF2 and verifies in constant time`() {
+        val rawPin = "2580"
+        val hash1 = SecurityUtils.hashPin(rawPin)
+        val hash2 = SecurityUtils.hashPin(rawPin)
+
+        assertTrue("Hash should use pbkdf2 prefix", hash1.startsWith("pbkdf2$4$"))
+        assertNotEquals("Salted hashes of identical PINs must differ", hash1, hash2)
+        assertFalse("Hash must not contain raw PIN", hash1.endsWith(rawPin))
+        assertEquals(4, SecurityUtils.extractPinLength(hash1))
+        assertTrue("Correct PIN must verify", SecurityUtils.verifyPin("2580", hash1))
+        assertFalse("Wrong PIN must fail verification", SecurityUtils.verifyPin("1234", hash1))
+        assertTrue("Legacy plaintext PIN fallback still verifies", SecurityUtils.verifyPin("2580", "2580"))
+    }
+
     // ==========================================
     // SUPPORT: deriveUserMode is accessible
     // ==========================================
