@@ -26,10 +26,12 @@ const CLOUDFLARE_IPV6_CIDRS: readonly string[] = [
 const trustedProxyBlocks = new BlockList();
 for (const range of CLOUDFLARE_IPV4_CIDRS) {
   const [network, mask] = range.split('/');
+  if (!network || !mask) throw new Error('Invalid bundled Cloudflare IPv4 CIDR');
   trustedProxyBlocks.addSubnet(network, Number(mask), 'ipv4');
 }
 for (const range of CLOUDFLARE_IPV6_CIDRS) {
   const [network, mask] = range.split('/');
+  if (!network || !mask) throw new Error('Invalid bundled Cloudflare IPv6 CIDR');
   trustedProxyBlocks.addSubnet(network, Number(mask), 'ipv6');
 }
 
