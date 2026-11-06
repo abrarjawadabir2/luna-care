@@ -1,40 +1,33 @@
-# Cloudflare Custom WAF Ruleset for LunaCare Perimeter
+# Restrict common sensitive paths without paid-plan regex operators.
+# Application authentication and input validation remain mandatory.
 resource "cloudflare_ruleset" "waf_custom" {
   zone_id     = var.cloudflare_zone_id
   name        = "lunacare-${var.environment}-waf-ruleset"
-  description = "Perimeter WAF rules blocking exploit scanners, sensitive file probing, and method violations"
+  description = "Block sensitive path access and unsupported methods"
   kind        = "zone"
   phase       = "http_request_firewall_custom"
 
-  # Rule 1: Block Sensitive Path & Credential Probing (.env, .git, .aws, admin consoles)
   rules {
+    ref         = "block_sensitive_paths"
     action      = "block"
-    description = "Block sensitive path and credential probing"
-    expression  = "(http.request.uri.path matches \"^/(\\\\.(env|git|aws|ssh)|wp-admin|phpmyadmin|actuator|telescope)\")"
+    description = "Block exposed config and common control-panel probes"
+    expression  = "(starts_with(http.request.uri.path, \"/.env\") or starts_with(http.request.uri.path, \"/.git\") or starts_with(http.request.uri.path, \"/.aws\") or starts_with(http.request.uri.path, \"/.ssh\") or starts_with(http.request.uri.path, \"/wp-admin\") or starts_with(http.request.uri.path, \"/phpmyadmin\") or starts_with(http.request.uri.path, \"/actuator\"))"
     enabled     = true
   }
 
-  # Rule 2: Block Probing of Internal Admin Interfaces
   rules {
+    ref         = "block_admin_paths"
     action      = "block"
-    description = "Block probing of nonexistent internal admin paths"
-    expression  = "(http.request.uri.path matches \"^/admin\")"
+    description = "Block public access to internal admin paths"
+    expression  = "(starts_with(http.request.uri.path, \"/admin\"))"
     enabled     = true
   }
 
-  # Rule 3: Block Automated Security Scanners & Reconnaissance Bots
   rules {
+    ref         = "reject_unexpected_api_methods"
     action      = "block"
-    description = "Block recognized automated vulnerability scanners"
-    expression  = "(http.user_agent matches \"(?i)(sqlmap|nikto|acunetix|nessus|masscan|zgrab|nmap)\")"
-    enabled     = true
-  }
-
-  # Rule 4: Restrict HTTP Methods on API Routes
-  rules {
-    action      = "block"
-    description = "Block dangerous or unapproved HTTP verbs on API routes"
-    expression  = "(http.request.uri.path starts_with \"/api/\" and not http.request.method in {\"GET\", \"POST\", \"PATCH\", \"PUT\", \"DELETE\", \"OPTIONS\", \"HEAD\"})"
+    description = "Reject methods not supported by the API"
+    expression  = "(starts_with(http.request.uri.path, \"/api/\") and not (http.request.method in {\"GET\" \"POST\" \"PATCH\" \"PUT\" \"DELETE\" \"OPTIONS\" \"HEAD\"}))"
     enabled     = true
   }
 }
