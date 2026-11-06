@@ -23,7 +23,7 @@ resource "cloudflare_ruleset" "cache_rules" {
   rules {
     action      = "set_cache_settings"
     description = "Edge caching for public landing page and SEO robots/sitemap"
-    expression  = "(http.host eq var.domain and http.request.uri.path in {\"/\", \"/index.html\", \"/robots.txt\", \"/sitemap.xml\"})"
+    expression  = "(http.host eq \\"${var.domain}\\" and http.request.uri.path in {\"/\", \"/index.html\", \"/robots.txt\", \"/sitemap.xml\"})"
     enabled     = true
 
     action_parameters {
