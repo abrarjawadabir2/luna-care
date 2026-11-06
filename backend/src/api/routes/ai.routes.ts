@@ -10,7 +10,7 @@ export const aiRoutes: FastifyPluginAsync = async (fastify) => {
     maxLimit: 15,
     windowMs: 60 * 1000,
     keyPrefix: 'ai_chat',
-    extractKey: (req) => req.user?.id || 'anonymous'
+    extractKey: (req, hashedIp) => req.user?.id || hashedIp
   });
 
   // POST /api/v1/ai/chat

@@ -39,6 +39,8 @@ jobs:
           assert page.tags[0][0] == "html" or any(tag == "html" for tag, _ in page.tags)
           assert any(tag == "html" and attrs.get("lang") for tag, attrs in page.tags)
           assert any(tag == "meta" and attrs.get("name") == "description" for tag, attrs in page.tags)
+          assert any(tag == "meta" and attrs.get("http-equiv") == "Content-Security-Policy" for tag, attrs in page.tags)
+          assert any(tag == "meta" and attrs.get("http-equiv") == "X-Content-Type-Options" for tag, attrs in page.tags)
           assert any(tag == "h1" for tag, _ in page.tags)
           assert not any(tag == "form" for tag, _ in page.tags)
           assert not any(tag == "script" and attrs.get("src") for tag, attrs in page.tags)

@@ -2,6 +2,7 @@ import { getEnv } from '../config/env.js';
 import { db } from '../database/index.js';
 import { logger } from '../utils/logger.js';
 import { AuditService } from '../audit/audit.service.js';
+import { sanitizeAiOutput } from '../security/index.js';
 
 const CRISIS_KEYWORDS = [
   'suicide', 'suicidal', 'kill myself', 'hurt myself',
@@ -120,6 +121,9 @@ export class AiService {
       replyText = `Thank you for your wellness question about ${topic}. Remember that LunaCare is educational only and cannot replace a doctor. For specific medical concerns, please consult a healthcare professional.`;
     }
 
+    // Treat model output as untrusted: sanitize against HTML/script injection
+    const { safeText } = sanitizeAiOutput(replyText);
+
     // 4. Update usage quota atomically
     const newUsed = usedThisMonth + 1;
     db.saveProfile({
@@ -137,7 +141,7 @@ export class AiService {
     });
 
     return {
-      reply: replyText,
+      reply: safeText,
       isCrisis: false,
       remainingMessages: Math.max(0, limit - newUsed)
     };

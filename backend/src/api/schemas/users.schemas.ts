@@ -1,11 +1,20 @@
 import { z } from 'zod';
+import { isSafeUrl } from '../../security/index.js';
 
 // Explicit allowlist of writable profile fields.
 // FORBIDDEN / STRIPPED: role, isPremium, aiMessagesUsedThisMonth, id, createdAt, updatedAt
 export const updateProfileSchema = z.object({
   displayName: z.string().min(1).max(100).optional(),
   username: z.string().min(3).max(30).optional(),
-  avatar: z.string().max(500).optional().nullable(),
+  avatar: z
+    .string()
+    .max(500)
+    .optional()
+    .nullable()
+    .refine(
+      (val) => !val || isSafeUrl(val),
+      { message: 'Avatar must be a valid https URL or safe storage key (javascript:, data:, and insecure schemes are rejected).' }
+    ),
   bio: z.string().max(500).optional().nullable(),
   userMode: z.enum(['SELF_TRACKING', 'SUPPORT_MODE', 'EDUCATION_ONLY']).optional(),
   genderMode: z.string().max(50).optional(),

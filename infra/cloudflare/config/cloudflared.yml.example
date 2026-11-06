@@ -1,0 +1,23 @@
+# LunaCare cloudflared daemon configuration template
+# Location on EC2 instance: /etc/cloudflared/config.yml
+# Managed via systemd unit: cloudflared.service
+
+tunnel: REPLACE_WITH_TUNNEL_UUID
+credentials-file: /etc/cloudflared/REPLACE_WITH_TUNNEL_UUID.json
+
+# Protocol: QUIC (HTTP/3) or HTTP/2 outbound to Cloudflare edge over port 7844 / 443
+protocol: auto
+
+# Ingress Rules
+ingress:
+  # Route traffic for api.lunacare.example to local Fastify backend port
+  - hostname: api.lunacare.example
+    service: http://localhost:3000
+    originRequest:
+      connectTimeout: 10s
+      keepAliveTimeout: 60s
+      noTLSVerify: false
+      httpHostHeader: api.lunacare.example
+
+  # Fallback rule: Return 404 for any other unrecognized hostname
+  - service: http_status:404

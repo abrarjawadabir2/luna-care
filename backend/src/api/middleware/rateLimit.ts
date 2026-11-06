@@ -1,5 +1,5 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { purposeSeparatedHash } from '../../security/index.js';
+import { purposeSeparatedHash, getTrustedClientIp } from '../../security/index.js';
 import { AuditService } from '../../audit/audit.service.js';
 
 interface RateLimitBucket {
@@ -65,7 +65,7 @@ export function createRateLimiter(options: {
 }) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     // Hash client IP with purpose-separated HMAC to prevent plaintext IP storage
-    const ip = request.ip || '127.0.0.1';
+    const ip = getTrustedClientIp(request);
     const hashedIp = purposeSeparatedHash('ip_rate_limit', ip);
 
     // Derive identifier: custom extractor (receiving pre-hashed IP) or hashed IP

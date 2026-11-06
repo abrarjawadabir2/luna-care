@@ -3,6 +3,7 @@ import { db } from '../../database/index.js';
 import { updateProfileSchema } from '../schemas/index.js';
 import { AuditService } from '../../audit/audit.service.js';
 import { validateUsername } from '../../utils/username.js';
+import { sanitizeUserBio } from '../../security/index.js';
 
 export class UsersController {
   static async getProfile(request: FastifyRequest, reply: FastifyReply) {
@@ -136,6 +137,9 @@ export class UsersController {
     // Save profile with remaining updates (username already updated atomically if claimed)
     const currentProfile = db.getProfile(userId)!;
     const { username: _u, ...otherUpdates } = updates;
+    if (otherUpdates.bio !== undefined && otherUpdates.bio !== null) {
+      otherUpdates.bio = sanitizeUserBio(otherUpdates.bio);
+    }
     const updated = db.saveProfile({
       ...currentProfile,
       ...otherUpdates,

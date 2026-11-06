@@ -101,4 +101,18 @@ backend/dist/
 backend-rust/target/
 coverage/
 
+# Infrastructure as Code (Terraform)
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
 
