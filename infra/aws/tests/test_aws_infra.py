@@ -30,7 +30,7 @@ class TestAwsInfraSecurity(unittest.TestCase):
     def test_app_security_group_restricted(self):
         """Backend application security group must accept port 3000 strictly from ALB."""
         sg_file = (TF_DIR / "security_groups.tf").read_text(encoding="utf-8")
-        self.assertIn("from_port       = 3000", sg_file)
+        self.assertIn("from_port                    = 3000", sg_file)
         self.assertIn('resource "aws_vpc_security_group_ingress_rule" "app_from_alb"', sg_file)
         self.assertIn("referenced_security_group_id = aws_security_group.alb.id", sg_file)
 
