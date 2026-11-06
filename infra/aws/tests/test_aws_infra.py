@@ -69,5 +69,29 @@ class TestAwsInfraSecurity(unittest.TestCase):
         self.assertIn("*.tfvars", gitignore)
         self.assertIn("*.tfplan", gitignore)
 
+    def test_https_listener_has_real_certificate_input(self):
+        alb = (TF_DIR / "alb.tf").read_text(encoding="utf-8")
+        variables = (TF_DIR / "variables.tf").read_text(encoding="utf-8")
+        self.assertIn('resource "aws_lb_listener" "https"', alb)
+        self.assertIn('certificate_arn   = var.alb_certificate_arn', alb)
+        self.assertIn('target_group_arn = aws_lb_target_group.app.arn', alb)
+        self.assertIn('variable "alb_certificate_arn"', variables)
+        self.assertNotIn('default     = "arn:aws:acm:', variables)
+
+    def test_production_templates_are_blocked_before_real_backend_exists(self):
+        gate = (TF_DIR / "deployment_readiness.tf").read_text(encoding="utf-8")
+        variables = (TF_DIR / "variables.tf").read_text(encoding="utf-8")
+        self.assertIn('var.deployment_authorized', gate)
+        self.assertIn('var.backend_persistence_verified', gate)
+        self.assertIn('var.backend_runtime_verified', gate)
+        self.assertIn('default     = false', variables)
+
+    def test_secret_resource_never_creates_placeholder_credentials(self):
+        secret = (TF_DIR / "secrets.tf").read_text(encoding="utf-8")
+        self.assertIn('resource "aws_secretsmanager_secret" "lunacare_config"', secret)
+        self.assertNotIn('resource "aws_secretsmanager_secret_version"', secret)
+        self.assertNotIn('REPLACE_WITH_MINIMUM_32_CHAR', secret)
+        self.assertNotIn('postgresql://postgres:REPLACE', secret)
+
 if __name__ == "__main__":
     unittest.main()
