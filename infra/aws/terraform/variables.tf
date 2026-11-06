@@ -45,3 +45,26 @@ variable "alert_email" {
   type        = string
   default     = "security-alerts@example.com"
 }
+
+# Required for the HTTPS listener. There is intentionally no fake default.
+variable "alb_certificate_arn" {
+  description = "ACM certificate ARN for the ALB HTTPS listener, in the selected AWS region"
+  type        = string
+
+  validation {
+    condition     = can(regex("^arn:aws:acm:[a-z0-9-]+:[0-9]{12}:certificate/[a-zA-Z0-9-]+$", var.alb_certificate_arn))
+    error_message = "Provide a real ACM certificate ARN in the AWS region selected."
+  }
+}
+
+variable "deployment_authorized" {
+  description = "Set to true only after explicit owner authorization for billable AWS provisioning"
+  type        = bool
+  default     = false
+}
+
+variable "backend_persistence_verified" {
+  description = "Set to true only when a persistent backend adapter, deployment artifact and health-data safeguards are verified"
+  type        = bool
+  default     = false
+}
