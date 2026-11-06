@@ -15,6 +15,29 @@ env:
   NODE_VERSION: '20'
 
 jobs:
+  infrastructure-validation:
+    name: Terraform and infrastructure security validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+      - name: Verify local infrastructure guardrails
+        run: |
+          python3 -m unittest discover -s infra/aws/tests -p 'test_*.py'
+          python3 -m unittest discover -s infra/cloudflare/tests -p 'test_*.py'
+      - name: Validate AWS Terraform without credentials or plan/apply
+        working-directory: infra/aws/terraform
+        run: |
+          terraform init -backend=false -input=false -no-color
+          terraform validate -no-color
+      - name: Validate Cloudflare Terraform without credentials or plan/apply
+        working-directory: infra/cloudflare/terraform
+        run: |
+          terraform init -backend=false -input=false -no-color
+          terraform validate -no-color
+
   web-static-check:
     name: Public HTML smoke test
     runs-on: ubuntu-latest
