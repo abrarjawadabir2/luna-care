@@ -50,3 +50,6 @@ export function generateSecureOtp(): string {
 export function generateSecureToken(bytes = 32): string {
   return crypto.randomBytes(bytes).toString('hex');
 }
+
+export * from './xss.js';
+

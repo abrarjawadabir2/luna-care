@@ -10,7 +10,7 @@ export const uploadsRoutes: FastifyPluginAsync = async (fastify) => {
     maxLimit: 10,
     windowMs: 60 * 60 * 1000,
     keyPrefix: 'user_upload',
-    extractKey: (req) => req.user?.id || 'anonymous'
+    extractKey: (req, hashedIp) => req.user?.id || hashedIp
   });
 
   // POST /api/v1/uploads/inspect

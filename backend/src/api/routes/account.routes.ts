@@ -10,7 +10,7 @@ export const accountRoutes: FastifyPluginAsync = async (fastify) => {
     maxLimit: 5,
     windowMs: 60 * 60 * 1000,
     keyPrefix: 'account_op',
-    extractKey: (req) => req.user?.id || 'anonymous'
+    extractKey: (req, hashedIp) => req.user?.id || hashedIp
   });
 
   // GET /api/v1/account/export
