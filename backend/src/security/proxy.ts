@@ -1,57 +1,54 @@
+import { BlockList, isIP } from 'node:net';
 import type { FastifyRequest } from 'fastify';
 
 /**
- * LunaCare Trusted Proxy & Cloudflare IP Validation Utilities
- * 
- * Ensures that client IP addresses (such as CF-Connecting-IP) are ONLY trusted
- * when the TCP connection originates from a verified Cloudflare IP address or local Cloudflare Tunnel daemon.
- * Untrusted direct clients attempting to spoof CF-Connecting-IP will have their headers strictly ignored.
+ * Check Cloudflare proxy addresses using their complete published CIDR networks,
+ * not string prefixes. Prefix checks incorrectly trusted unrelated IP addresses
+ * (for example 198.41.1.2 is NOT in Cloudflare's 198.41.128.0/17).
+ *
+ * Source: https://www.cloudflare.com/ips-v4 and https://www.cloudflare.com/ips-v6
+ * Review/update these networks whenever Cloudflare publishes changes.
  */
-
-// Cloudflare official IPv4 CIDR ranges
-const CLOUDFLARE_IPV4_PREFIXES = [
-  '173.245.48.',
-  '103.21.244.',
-  '103.22.200.',
-  '103.31.4.',
-  '141.101.',
-  '108.162.',
-  '190.93.',
-  '188.114.',
-  '197.234.240.',
-  '198.41.',
-  '162.158.',
-  '104.16.',
-  '104.17.',
-  '104.18.',
-  '104.19.',
-  '104.20.',
-  '104.21.',
-  '104.22.',
-  '104.23.',
-  '104.24.',
-  '104.25.',
-  '104.26.',
-  '104.27.',
-  '172.64.',
-  '172.65.',
-  '172.66.',
-  '172.67.',
-  '172.68.',
-  '172.69.',
-  '172.70.',
-  '172.71.',
-  '131.0.72.'
+const CLOUDFLARE_IPV4_CIDRS: readonly string[] = [
+  '173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22',
+  '103.31.4.0/22', '141.101.64.0/18', '108.162.192.0/18',
+  '190.93.240.0/20', '188.114.96.0/20', '197.234.240.0/22',
+  '198.41.128.0/17', '162.158.0.0/15', '104.16.0.0/13',
+  '104.24.0.0/14', '172.64.0.0/13', '131.0.72.0/22'
 ];
 
+const CLOUDFLARE_IPV6_CIDRS: readonly string[] = [
+  '2400:cb00::/32', '2606:4700::/32', '2803:f800::/32',
+  '2405:b500::/32', '2405:8100::/32', '2a06:98c0::/29',
+  '2c0f:f248::/32'
+];
+
+const trustedProxyBlocks = new BlockList();
+for (const range of CLOUDFLARE_IPV4_CIDRS) {
+  const [network, mask] = range.split('/');
+  trustedProxyBlocks.addSubnet(network, Number(mask), 'ipv4');
+}
+for (const range of CLOUDFLARE_IPV6_CIDRS) {
+  const [network, mask] = range.split('/');
+  trustedProxyBlocks.addSubnet(network, Number(mask), 'ipv6');
+}
+
+function normalizeIp(ip: string): string {
+  // Node may report IPv4 peers as IPv4-mapped IPv6 socket addresses.
+  return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+}
+
 export function isLoopbackAddress(ip: string): boolean {
-  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || ip === 'localhost';
+  return ip === '127.0.0.1' || ip === '::1' ||
+    ip === '::ffff:127.0.0.1';
 }
 
 export function isCloudflareIp(ip: string): boolean {
-  if (!ip) return false;
-  const cleanIp = ip.replace(/^::ffff:/, '');
-  return CLOUDFLARE_IPV4_PREFIXES.some(prefix => cleanIp.startsWith(prefix));
+  const normalized = normalizeIp(ip);
+  const family = isIP(normalized);
+  if (family === 4) return trustedProxyBlocks.check(normalized, 'ipv4');
+  if (family === 6) return trustedProxyBlocks.check(normalized, 'ipv6');
+  return false;
 }
 
 export function isTrustedProxy(ip: string): boolean {
@@ -59,19 +56,20 @@ export function isTrustedProxy(ip: string): boolean {
 }
 
 /**
- * Safely extracts the real client IP address.
- * Only trusts CF-Connecting-IP if the direct socket connection is from a verified trusted proxy.
+ * Trust CF-Connecting-IP only when the TCP peer is a verified Cloudflare edge
+ * or local cloudflared tunnel. Never trust arbitrary forwarded-IP headers.
+ * Malformed/comma-separated header values fail closed to the socket address.
  */
 export function getTrustedClientIp(request: FastifyRequest): string {
-  const socketAddress = request.raw?.socket?.remoteAddress || request.ip || '127.0.0.1';
-  const cfConnectingIp = request.headers['cf-connecting-ip'];
+  const socketAddress = request.raw?.socket?.remoteAddress || request.ip || '';
+  const directIp = normalizeIp(socketAddress);
+  const header = request.headers['cf-connecting-ip'];
 
-  if (cfConnectingIp && typeof cfConnectingIp === 'string') {
-    // Check if the physical connection originated from our Cloudflare Tunnel (loopback) or Cloudflare edge
-    if (isTrustedProxy(socketAddress)) {
-      return cfConnectingIp.trim();
+  if (typeof header === 'string' && isTrustedProxy(socketAddress)) {
+    const candidate = header.trim();
+    if (isIP(candidate) !== 0) {
+      return candidate;
     }
   }
-
-  return socketAddress.replace(/^::ffff:/, '');
+  return directIp;
 }
