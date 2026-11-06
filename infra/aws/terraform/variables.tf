@@ -57,6 +57,12 @@ variable "alb_certificate_arn" {
   }
 }
 
+variable "backend_runtime_verified" {
+  description = "Set true only when verified bootstrapping installs a supported Node runtime, a pinned app artifact and service wiring"
+  type        = bool
+  default     = false
+}
+
 variable "deployment_authorized" {
   description = "Set to true only after explicit owner authorization for billable AWS provisioning"
   type        = bool
