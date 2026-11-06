@@ -65,9 +65,12 @@ export async function buildApp(): Promise<FastifyInstance> {
   // 3. Request ID middleware
   app.addHook('onRequest', requestIdMiddleware);
 
-  // 4. API Search Indexing Protection (X-Robots-Tag)
+  // 4. API Search Indexing & Strict Anti-Caching Protection
   app.addHook('onSend', async (_req, reply, payload) => {
     reply.header('x-robots-tag', 'noindex, nofollow, noarchive');
+    reply.header('cache-control', 'private, no-store, no-cache, must-revalidate');
+    reply.header('pragma', 'no-cache');
+    reply.header('expires', '0');
     return payload;
   });
 

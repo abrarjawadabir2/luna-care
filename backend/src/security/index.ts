@@ -52,4 +52,6 @@ export function generateSecureToken(bytes = 32): string {
 }
 
 export * from './xss.js';
+export * from './proxy.js';
+
 

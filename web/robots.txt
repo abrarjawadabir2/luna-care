@@ -1,0 +1,12 @@
+# LunaCare Search Engine Crawling Policy
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /account/
+Disallow: /journal/
+Disallow: /periods/
+Disallow: /moods/
+Disallow: /internal/
+
+Sitemap: https://lunacare.example/sitemap.xml
