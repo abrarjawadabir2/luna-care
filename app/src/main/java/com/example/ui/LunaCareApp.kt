@@ -2833,6 +2833,10 @@ fun UsernameInputField(
             value = rawText,
             onValueChange = { input ->
                 rawText = input.replace(" ", "")
+                // Invalidate the last accepted username immediately, not after
+                // the debounce. A fast tap on Save must not reuse stale input.
+                onUsernameValidChange(null)
+                onInputValidityChange(false)
             },
             prefix = { Text("@", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)) },
             placeholder = { Text("username") },
@@ -2863,9 +2867,7 @@ fun UsernameInputField(
                 }
 
                 Text(
-                    text = when (statusState) {
-                        else -> statusMessage
-                    },
+                    text = statusMessage,
                     style = MaterialTheme.typography.bodySmall.copy(color = textColor),
                     modifier = Modifier.testTag("username_status_text")
                 )
