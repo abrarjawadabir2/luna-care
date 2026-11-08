@@ -8,7 +8,9 @@ plugins {
 
 android {
   namespace = "com.example"
-  compileSdk { version = release(36) { minorApiLevel = 1 } }
+  // AndroidX Navigation 2.10 / Compose 1.12 require API 37 for compilation.
+  // Keeping targetSdk at 36 avoids opting into API 37 behavior at runtime.
+  compileSdk = 37
 
   defaultConfig {
     applicationId = "com.aistudio.lunacare.fpyqkx"
