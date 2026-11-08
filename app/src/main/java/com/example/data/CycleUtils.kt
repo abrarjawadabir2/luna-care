@@ -10,6 +10,18 @@ object CycleUtils {
     private val displayFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US)
     private val shortDisplayFormatter = DateTimeFormatter.ofPattern("MMM d", Locale.US)
 
+    /**
+     * Parse entered cycle settings without silently replacing invalid input
+     * with default values. A very wide range accommodates unusual cycles;
+     * these values are for personal tracking, not diagnosis.
+     */
+    fun parseCycleSettings(cycleText: String, periodText: String): Pair<Int, Int>? {
+        val cycleDays = cycleText.trim().toIntOrNull() ?: return null
+        val periodDays = periodText.trim().toIntOrNull() ?: return null
+        if (cycleDays !in 1..365 || periodDays !in 1..cycleDays) return null
+        return cycleDays to periodDays
+    }
+
     fun getTodayString(): String {
         return LocalDate.now().format(formatter)
     }
