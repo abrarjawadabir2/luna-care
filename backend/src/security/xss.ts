@@ -162,3 +162,92 @@ export function isSafeSvg(svgContent: string): { safe: boolean; reason?: string 
 
   return { safe: true };
 }
+
+const PROMPT_INJECTION_PATTERNS: RegExp[] = [
+  /ignore\s+(?:all\s+|any\s+)?(?:previous|prior|above)\s+instructions?/i,
+  /disregard\s+(?:all\s+|any\s+)?(?:previous|prior|above)\s+instructions?/i,
+  /reveal\s+(?:the\s+)?(?:system\s+prompt|secrets?|credentials?|env)/i,
+  /dump\s+(?:the\s+)?(?:environment|database|secrets?)/i,
+  /(?:execute|run)\s+(?:shell|command|terminal)/i,
+  /<\|im_start\|>|\[INST\]/i
+];
+
+/**
+ * Sanitizes untrusted Markdown extracted from converted documents:
+ * - Strips dangerous HTML tags and inline event handlers
+ * - Escapes remaining raw HTML brackets
+ * - Neutralizes unsafe link schemes (javascript:, data:, vbscript:, file:, http://)
+ * - Removes external/tracking Markdown image embeds
+ * - Flags embedded prompt-injection patterns as warnings
+ */
+export function sanitizeConvertedMarkdown(markdown: string): {
+  safeMarkdown: string;
+  warnings: string[];
+} {
+  if (typeof markdown !== 'string') {
+    return { safeMarkdown: '', warnings: [] };
+  }
+
+  const warnings: string[] = [];
+  let text = markdown;
+
+  // 1. Strip dangerous HTML blocks and tags
+  const dangerousTags = /<\s*(script|iframe|object|embed|style|svg|form)\b[^<]*(?:(?!<\/\1>)<[^<]*)*<\/\1>/gi;
+  if (dangerousTags.test(text)) {
+    warnings.push('DANGEROUS_HTML_STRIPPED');
+    text = text.replace(dangerousTags, '');
+  }
+
+  const standaloneDangerousTags = /<\s*(script|iframe|object|embed|style|svg|form|link|meta|base)\b[^>]*\/?>/gi;
+  if (standaloneDangerousTags.test(text)) {
+    if (!warnings.includes('DANGEROUS_HTML_STRIPPED')) {
+      warnings.push('DANGEROUS_HTML_STRIPPED');
+    }
+    text = text.replace(standaloneDangerousTags, '');
+  }
+
+  // 2. Strip inline event handlers (e.g., onerror=, onload=)
+  if (/\bon\w+\s*=/i.test(text)) {
+    warnings.push('EVENT_HANDLER_STRIPPED');
+    text = text.replace(/\bon\w+\s*=\s*(['"]).*?\1/gi, '');
+    text = text.replace(/\bon\w+\s*=\s*[^\s>]+/gi, '');
+  }
+
+  // 3. Neutralize Markdown images to prevent tracking pixels or external fetches
+  text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_match, alt: string) => {
+    if (!warnings.includes('EXTERNAL_IMAGE_NEUTRALIZED')) {
+      warnings.push('EXTERNAL_IMAGE_NEUTRALIZED');
+    }
+    const cleanAlt = alt.trim() || 'image';
+    return `[Image removed for privacy: ${cleanAlt}]`;
+  });
+
+  // 4. Validate Markdown links strictly; allow only #anchors or https:// URLs
+  text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label: string, url: string) => {
+    const trimmedUrl = url.trim();
+    const isAnchor = trimmedUrl.startsWith('#') && !/[\s<>]/.test(trimmedUrl);
+    const isSafeHttps = /^https:\/\//i.test(trimmedUrl) && isSafeUrl(trimmedUrl);
+    if (isAnchor || isSafeHttps) {
+      return `[${label}](${trimmedUrl})`;
+    }
+    if (!warnings.includes('UNSAFE_LINK_NEUTRALIZED')) {
+      warnings.push('UNSAFE_LINK_NEUTRALIZED');
+    }
+    return `[${label} (unsafe link removed)]`;
+  });
+
+  // 5. Escape remaining raw HTML angle brackets so no raw HTML can execute on render
+  if (/[<>]/.test(text)) {
+    if (!warnings.includes('RAW_HTML_ESCAPED')) {
+      warnings.push('RAW_HTML_ESCAPED');
+    }
+    text = text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // 6. Detect embedded prompt-injection directives (data-only framing)
+  if (PROMPT_INJECTION_PATTERNS.some((pattern) => pattern.test(text))) {
+    warnings.push('PROMPT_INJECTION_PATTERN_DETECTED');
+  }
+
+  return { safeMarkdown: text.trim(), warnings };
+}
