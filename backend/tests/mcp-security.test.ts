@@ -42,6 +42,7 @@ describe('MCP Security, Policies & Pinned Tooling Tests', () => {
     assert.ok(denied.includes('run_arbitrary_code'), 'run_arbitrary_code must be explicitly denied');
     assert.ok(denied.includes('dump_environment'), 'dump_environment must be explicitly denied');
     assert.ok(denied.includes('reveal_secrets'), 'reveal_secrets must be explicitly denied');
+    assert.ok(denied.includes('markitdown_convert_remote_uri'), 'Remote URI document conversion must be explicitly denied');
   });
 
   test('4. MCP network allowlist prohibits 0.0.0.0 and forbids user health data egress', () => {
@@ -62,6 +63,9 @@ describe('MCP Security, Policies & Pinned Tooling Tests', () => {
     assert.equal(policy.flags.noSandbox, false);
     assert.equal(policy.flags.ignoreHttpsErrors, false);
     assert.equal(policy.filesystemBounds.workspaceRootOnly, true);
+    assert.ok(policy.filesystemBounds.prohibitedPaths.includes('.env'));
+    assert.ok(policy.filesystemBounds.prohibitedPaths.includes('*.jks'));
+    assert.ok(policy.filesystemBounds.prohibitedPaths.includes('docs-private'));
   });
 
   test('6. .gitignore protects local MCP secret files and Playwright test artifacts', () => {
