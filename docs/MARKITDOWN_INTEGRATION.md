@@ -9,7 +9,7 @@ An audit of LunaCare's upload and AI services shows that **public user-document 
 - `backend/src/services/ai.service.ts` enforces crisis detection, monthly quotas, and `sanitizeAiOutput()`, and has zero access to uploaded files, database handles, or MCP tools.
 - `app/src/main/java/com/example/` is a local-first Kotlin/Compose Android app using Room SQLite and Android Keystore AES-256-GCM encryption; no Python runtime is bundled into the Android APK.
 
-**Decision:** Rather than exposing a broken or unsafe user-facing upload feature, LunaCare integrates Microsoft MarkItDown (`markitdown[pdf,docx,pptx,xlsx]==0.1.9`) as an **optional, hardened local developer CLI and conversion adapter** ([scripts/convert_document.py](file:///Users/abrar/antigravity/LunaCare/scripts/convert_document.py)).
+**Decision:** Rather than exposing a broken or unsafe user-facing upload feature, LunaCare integrates Microsoft MarkItDown (`markitdown[pdf,docx,pptx,xlsx]==0.1.9`) as an **optional, hardened local developer CLI and conversion adapter** ([scripts/convert_document.py](../scripts/convert_document.py)).
 
 ---
 
@@ -28,7 +28,7 @@ Converted documents must **never** be used automatically for model training.
 
 ## 3. Local Developer Setup & Usage
 
-MarkItDown requires Python >= 3.10. Always install it in an isolated virtual environment (never globally and never into the Android APK):
+Use Python 3.12 for LunaCare's pinned MarkItDown environment. Upstream MarkItDown supports additional Python versions, but the pinned NumPy 2.5.5 requires Python 3.12 or newer. Install into an isolated virtual environment, not globally or into the Android APK:
 
 ```sh
 python3.12 -m venv .venv
@@ -55,29 +55,29 @@ Run the 16 synthetic-document security and conversion tests:
 
 ## 4. Privacy & Security Protections
 
-- **Local & Offline Only:** Outbound socket connections (`socket.socket.connect`, `socket.create_connection`) and `urllib.request.urlopen` are blocked during conversion (`disable_network_access`).
+- **Local-only design:** During conversion, the adapter blocks several Python networking APIs (`socket.socket.connect`, `socket.socket.connect_ex`, `socket.create_connection`, and `urllib.request.urlopen`). This is a process-wide Python guard, not OS-level network isolation. Use only trusted, explicitly approved nonsensitive files; do not run this adapter concurrently in a server or expose it as a public conversion service.
 - **Cloud Services Disabled:** `MarkItDown(enable_plugins=False)` is invoked without `llm_client`, `llm_model`, OCR services, Azure Document Intelligence, or Azure Content Understanding.
 - **Strict Input Validation:**
   - Rejects remote URLs (`http://`, `https://`, `ftp://`, `file://`, `data:`, `//`).
   - Rejects path traversal (`..`), null bytes, symlinks, and files outside `--allowed-root`.
   - Blocks sensitive paths (`.env`, `.env.*`, `*.jks`, `*.keystore`, `*.pem`, `*.key`, `local.properties`, `docs-private/`, `docs/private/`, and `*secret*`/`*token*`/`*credential*` filenames).
-  - Enforces 5 MiB default size limit (`DEFAULT_MAX_BYTES`) and 15s conversion timeout (`DEFAULT_TIMEOUT_SECONDS`).
+  - Enforces 5 MiB default size limit (`DEFAULT_MAX_BYTES`) and 30s result-wait timeout (`DEFAULT_TIMEOUT_SECONDS`).
   - Validates binary signatures (`%PDF-`/`%%EOF` for PDF; `PK\x03\x04`, required OOXML parts, XML DTD/ENTITY blocking, ZipSlip, and ZIP bomb ratio/size limits for `.docx`/`.pptx`/`.xlsx`).
   - Uses `MarkItDown.convert_stream(..., file_extension=...)` rather than the permissive URL-capable `convert()`.
 - **Restricted Temp Storage:** Stages files in `0o700` temporary directories with `0o600` file permissions and deletes them in a `finally:` block.
 - **No Content Logging:** Structured audit logs emit only `conversion_id`, `format`, `size_bytes`, `sha256_prefix`, `status`, and `reason_code` — never document contents or raw paths.
-- **XSS & Prompt-Injection Defenses:** `sanitize_converted_markdown()` (and `sanitizeConvertedMarkdown()` in [backend/src/security/xss.ts](file:///Users/abrar/antigravity/LunaCare/backend/src/security/xss.ts)) strips dangerous HTML/event handlers, neutralizes tracking images and unsafe links (`javascript:`, `data:`, `vbscript:`, `file:`, `http://`), escapes remaining raw `<`/`>`, flags prompt-injection directives (`PROMPT_INJECTION_DETECTED`), and frames output inside an untrusted-data provenance header.
-- **Cross-User Isolation:** `InMemoryConversionStore.get_result()` enforces `requester_id == record.owner_id` and raises `CrossUserAccessError` on mismatch.
+- **XSS & Prompt-Injection Defenses:** `sanitize_converted_markdown()` (and `sanitizeConvertedMarkdown()` in [backend/src/security/xss.ts](../backend/src/security/xss.ts)) strips dangerous HTML/event handlers, neutralizes tracking images and unsafe links (`javascript:`, `data:`, `vbscript:`, `file:`, `http://`), escapes remaining raw `<`/`>`, flags prompt-injection directives (`PROMPT_INJECTION_DETECTED`), and frames output inside an untrusted-data provenance header.
+- **Prototype owner check (not a production authorization boundary):** `InMemoryConversionStore.get_result()` enforces `requester_id == record.owner_id` and raises `CrossUserAccessError` on mismatch.
 
 ---
 
 ## 5. Optional `markitdown-mcp` Evaluation
 
-The official `markitdown-mcp` server is **not** enabled by default in [mcp/config/servers.example.json](file:///Users/abrar/antigravity/LunaCare/mcp/config/servers.example.json):
+The official `markitdown-mcp` server is **not** enabled by default in [mcp/config/servers.example.json](../mcp/config/servers.example.json):
 
 - `markitdown-mcp` accepts `file:`, `http:`, `https:`, and `data:` URIs, creating SSRF and arbitrary local file-read risks if misconfigured.
 - If ever used for trusted local development, it **must** use `STDIO` transport only (never public HTTP/SSE), run under restricted filesystem permissions, and remain blocked from `.env`, GitHub/AWS/Cloudflare tokens, database secrets, Android signing keys (`*.jks`, `*.keystore`), and `docs-private/`.
-- [mcp/policies/filesystem-policy.json](file:///Users/abrar/antigravity/LunaCare/mcp/policies/filesystem-policy.json) and [mcp/policies/tool-allowlist.json](file:///Users/abrar/antigravity/LunaCare/mcp/policies/tool-allowlist.json) explicitly prohibit sensitive secret paths and `markitdown_convert_remote_uri`.
+- [mcp/policies/filesystem-policy.json](../mcp/policies/filesystem-policy.json) and [mcp/policies/tool-allowlist.json](../mcp/policies/tool-allowlist.json) explicitly prohibit sensitive secret paths and `markitdown_convert_remote_uri`.
 
 ---
 
@@ -88,3 +88,11 @@ A user-facing document import flow (`Select document` -> `Validate document` -> 
 1. Encrypted, owner-scoped durable object storage (e.g., private S3/R2 bucket with KMS + per-user authorization).
 2. Explicit retention & cascading deletion wired into `DELETE /api/v1/users/me`.
 3. Explicit user consent and offline/local-only processing guarantees.
+
+
+## 7. Remaining validation and limitations
+
+- The CLI is for trusted local developers, not arbitrary uploads. The thread-based result timeout does not forcibly stop a running parser or guarantee a wall-clock process deadline. An isolated worker with operating-system resource controls is needed before handling untrusted uploads.
+- Markdown pattern filtering and prompt-injection warnings are defense-in-depth only. Treat the entire output as untrusted reference data. Use a vetted renderer with raw HTML and automatic external resource fetching disabled; never grant tool permissions based on document text.
+- Use a new output file inside an ignored directory such as `.artifacts/`; do not overwrite source documents or other existing files. Local permission modes are not a substitute for platform-specific filesystem access controls.
+- The current synthetic tests cover PDF, DOCX and XLSX conversion. PPTX is a configured format but requires its own successful conversion regression test before claiming verified support.
