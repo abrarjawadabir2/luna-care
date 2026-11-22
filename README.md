@@ -84,6 +84,16 @@ cargo test
 
 LunaCare does not bundle ECC into the application. Developers who use Antigravity can review [affaan-m/ECC](https://github.com/affaan-m/ECC) and optionally run `scripts/setup-ecc.sh` on macOS/Linux or `scripts/setup-ecc.ps1` on Windows. Both invoke the pinned `ecc-universal@2.2.3` minimal Antigravity setup. This is **not** part of runtime installation, CI, or app release builds. Review third-party scripts before running them.
 
+### Optional local document-to-Markdown CLI (MarkItDown)
+
+For converting approved, nonsensitive local developer or educational documents (`.pdf`, `.docx`, `.pptx`, `.xlsx`) into sanitized Markdown without bundling Python into the Android APK or production backend, see [docs/MARKITDOWN_INTEGRATION.md](docs/MARKITDOWN_INTEGRATION.md):
+
+```sh
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r scripts/requirements-markitdown.txt
+.venv/bin/python -m unittest discover -s scripts -p 'test_convert_document.py' -v
+```
+
 ## Android release signing
 
 A publishable Android release requires a private keystore, verified release signing, successful checks, privacy review and a production-ready data architecture. Tag-triggered release CI expects the GitHub Actions secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_STORE_PASSWORD` and `ANDROID_KEY_PASSWORD`. The private keystore must contain the alias `upload`. No real credentials or signing files belong in Git.
