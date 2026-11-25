@@ -54,6 +54,30 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  web-browser-journeys:
+    name: Public website real-browser user journeys
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned browser test tooling
+        run: |
+          python -m pip install playwright==1.56.0
+          python -m playwright install --with-deps chromium
+      - name: Test real Chromium interactions on mobile and desktop
+        run: python web/tests/test_user_journeys.py
+      - name: Save public-only website screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lunacare-public-website-ux-screenshots
+          path: test-results/web-ux/
+          if-no-files-found: ignore
+          retention-days: 14
+
   # ==========================================
   # NODE.JS BACKEND TESTS
   # ==========================================
