@@ -21,8 +21,9 @@ export class TurnstileService {
     token: string;
     remoteIp?: string;
     expectedAction?: string;
+    expectedHostname?: string;
   }): Promise<TurnstileVerificationResult> {
-    const { token, remoteIp, expectedAction } = input;
+    const { token, remoteIp, expectedAction, expectedHostname } = input;
 
     // 1. Basic token validation
     if (!token || typeof token !== 'string') {
@@ -62,11 +63,24 @@ export class TurnstileService {
       };
     }
 
-    // 3. Server-to-server call to Cloudflare Siteverify API
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+    // A successful challenge for some other website must not authorize LunaCare.
+    // Require an explicit hostname allowlist whenever a real secret is configured.
+    const allowedHostnames = (process.env['TURNSTILE_ALLOWED_HOSTNAMES'] ?? '')
+      .split(',').map(hostname => hostname.trim().toLowerCase()).filter(Boolean);
+    if (expectedHostname) allowedHostnames.push(expectedHostname.toLowerCase());
+    if (allowedHostnames.length === 0) {
+      logger.warn('turnstile.hostnames_not_configured');
+      return {
+        success: false,
+        errorCode: 'HOSTNAME_CONFIGURATION_REQUIRED',
+        errorMessage: 'Bot challenge verification is not configured.'
+      };
+    }
 
+    // 3. Server-to-server call to Cloudflare Siteverify API
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    try {
       const formData = new URLSearchParams();
       formData.append('secret', secretKey);
       formData.append('response', trimmedToken);
@@ -80,8 +94,6 @@ export class TurnstileService {
         body: formData,
         signal: controller.signal
       });
-
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
         logger.warn('turnstile.siteverify_http_error', { status: response.status });
@@ -119,12 +131,21 @@ export class TurnstileService {
       }
 
       // 4. Validate expected action if specified
-      if (expectedAction && data.action && data.action !== expectedAction) {
-        logger.warn('turnstile.action_mismatch', { expected: expectedAction, received: data.action });
+      if (expectedAction && data.action !== expectedAction) {
+        logger.warn('turnstile.action_mismatch');
         return {
           success: false,
           errorCode: 'ACTION_MISMATCH',
-          errorMessage: `Turnstile action mismatch: expected ${expectedAction}.`
+          errorMessage: 'Bot challenge verification failed.'
+        };
+      }
+
+      if (!data.hostname || !allowedHostnames.includes(data.hostname.toLowerCase())) {
+        logger.warn('turnstile.hostname_mismatch');
+        return {
+          success: false,
+          errorCode: 'HOSTNAME_MISMATCH',
+          errorMessage: 'Bot challenge verification failed.'
         };
       }
 
@@ -133,15 +154,15 @@ export class TurnstileService {
         hostname: data.hostname,
         action: data.action
       };
-    } catch (err: unknown) {
-      logger.error('turnstile.verification_exception', {
-        error: err instanceof Error ? err.message : 'Unknown error'
-      });
+    } catch {
+      logger.error('turnstile.verification_exception', { reason: 'SITEVERIFY_REQUEST_FAILED' });
       return {
         success: false,
         errorCode: 'VERIFICATION_REQUEST_FAILED',
         errorMessage: 'Bot challenge verification timed out or failed.'
       };
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 }

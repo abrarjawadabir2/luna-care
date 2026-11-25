@@ -23,15 +23,25 @@ class TestAwsInfraSecurity(unittest.TestCase):
         """PostgreSQL database security group must only accept ingress from app security group."""
         sg_file = (TF_DIR / "security_groups.tf").read_text(encoding="utf-8")
         self.assertIn("aws_security_group\" \"db\"", sg_file)
-        self.assertIn("security_groups = [aws_security_group.app.id]", sg_file)
-        self.assertNotIn('0.0.0.0/0', sg_file.split('aws_security_group" "db"')[1],
-                         "Database security group must not contain public 0.0.0.0/0 CIDR")
+        self.assertIn('resource "aws_vpc_security_group_ingress_rule" "db_from_app"', sg_file)
+        self.assertIn('referenced_security_group_id = aws_security_group.app.id', sg_file)
+        self.assertNotIn('resource "aws_vpc_security_group_ingress_rule" "db_public"', sg_file)
 
     def test_app_security_group_restricted(self):
         """Backend application security group must accept port 3000 strictly from ALB."""
         sg_file = (TF_DIR / "security_groups.tf").read_text(encoding="utf-8")
-        self.assertIn("from_port       = 3000", sg_file)
-        self.assertIn("security_groups = [aws_security_group.alb.id]", sg_file)
+        self.assertIn("from_port                    = 3000", sg_file)
+        self.assertIn('resource "aws_vpc_security_group_ingress_rule" "app_from_alb"', sg_file)
+        self.assertIn("referenced_security_group_id = aws_security_group.alb.id", sg_file)
+
+    def test_group_references_do_not_create_a_cycle(self):
+        """Group identities must be separate from SG-to-SG ingress/egress rules."""
+        sg = (TF_DIR / "security_groups.tf").read_text(encoding="utf-8")
+        self.assertIn('resource "aws_vpc_security_group_egress_rule" "alb_to_app"', sg)
+        self.assertIn('resource "aws_vpc_security_group_egress_rule" "app_to_db"', sg)
+        self.assertIn('resource "aws_vpc_security_group_ingress_rule" "db_from_app"', sg)
+        self.assertNotIn('  egress {', sg)
+        self.assertNotIn('  ingress {', sg)
 
     def test_imds_v2_enforced(self):
         """Launch template must enforce IMDSv2 to defend against SSRF credential theft."""
@@ -68,6 +78,30 @@ class TestAwsInfraSecurity(unittest.TestCase):
         self.assertIn("*.tfstate", gitignore)
         self.assertIn("*.tfvars", gitignore)
         self.assertIn("*.tfplan", gitignore)
+
+    def test_https_listener_has_real_certificate_input(self):
+        alb = (TF_DIR / "alb.tf").read_text(encoding="utf-8")
+        variables = (TF_DIR / "variables.tf").read_text(encoding="utf-8")
+        self.assertIn('resource "aws_lb_listener" "https"', alb)
+        self.assertIn('certificate_arn   = var.alb_certificate_arn', alb)
+        self.assertIn('target_group_arn = aws_lb_target_group.app.arn', alb)
+        self.assertIn('variable "alb_certificate_arn"', variables)
+        self.assertNotIn('default     = "arn:aws:acm:', variables)
+
+    def test_production_templates_are_blocked_before_real_backend_exists(self):
+        gate = (TF_DIR / "deployment_readiness.tf").read_text(encoding="utf-8")
+        variables = (TF_DIR / "variables.tf").read_text(encoding="utf-8")
+        self.assertIn('var.deployment_authorized', gate)
+        self.assertIn('var.backend_persistence_verified', gate)
+        self.assertIn('var.backend_runtime_verified', gate)
+        self.assertIn('default     = false', variables)
+
+    def test_secret_resource_never_creates_placeholder_credentials(self):
+        secret = (TF_DIR / "secrets.tf").read_text(encoding="utf-8")
+        self.assertIn('resource "aws_secretsmanager_secret" "lunacare_config"', secret)
+        self.assertNotIn('resource "aws_secretsmanager_secret_version"', secret)
+        self.assertNotIn('REPLACE_WITH_MINIMUM_32_CHAR', secret)
+        self.assertNotIn('postgresql://postgres:REPLACE', secret)
 
 if __name__ == "__main__":
     unittest.main()
