@@ -2,6 +2,7 @@ package com.example.ui
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
@@ -13,6 +14,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.Backspace
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.StickyNote2
 import androidx.compose.material.icons.automirrored.outlined.Help
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
@@ -60,7 +65,7 @@ enum class SupportTab(val title: String, val icon: ImageVector) {
     Support("Support", Icons.Default.VolunteerActivism),
     Learn("Learn", Icons.Default.School),
     Care("Care", Icons.Default.LocalPharmacy),
-    Notes("Notes", Icons.Default.StickyNote2),
+    Notes("Notes", Icons.AutoMirrored.Filled.StickyNote2),
     Settings("Settings", Icons.Default.Settings)
 }
 
@@ -79,11 +84,17 @@ enum class EducationTab(val title: String, val icon: ImageVector) {
 @Composable
 fun LunaCareApp(viewModel: LunaViewModel) {
     val profileState by viewModel.profile.collectAsState()
+    val isProfileLoaded by viewModel.isProfileLoaded.collectAsState()
     val isPinAuthenticated by viewModel.isPinAuthenticated.collectAsState()
     val isGuest by viewModel.isGuestUser.collectAsState()
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         when {
+            !isProfileLoaded && !isGuest -> {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(modifier = Modifier.testTag("startup_loading_indicator"))
+                }
+            }
             profileState == null && !isGuest -> {
                 // First launch: show opening/onboarding
                 OnboardingRootScreen(viewModel = viewModel)
@@ -91,6 +102,7 @@ fun LunaCareApp(viewModel: LunaViewModel) {
             (profileState?.securityPinEnabled == true) && !isPinAuthenticated && !isGuest -> {
                 PinAuthScreen(
                     storedPin = profileState?.securityPin ?: "",
+                    isLockedOut = { viewModel.isPinLockedOut() },
                     onAuthenticated = { viewModel.authenticatePin(it) }
                 )
             }
@@ -180,9 +192,11 @@ fun OnboardingRootScreen(viewModel: LunaViewModel) {
                 onComplete = {
                     if (disclaimerAccepted) {
                         val derivedMode = deriveUserMode(userMode, genderMode, bodyRelevantMode)
+                        val currentYear = java.time.Year.now().value
+                        val validBirthYear = birthYearStr.toIntOrNull()?.takeIf { it in 1900..currentYear }
                         viewModel.onboardUser(
                             name = name.ifBlank { "Companion" },
-                            birthYear = birthYearStr.toIntOrNull(),
+                            birthYear = validBirthYear,
                             cycleLength = cycleLength,
                             periodLength = periodLength,
                             goals = emptyList(),
@@ -272,7 +286,7 @@ fun OpeningPage(onGetStarted: () -> Unit, onGuest: () -> Unit) {
             ) {
                 OpeningFeatureRow(Icons.Default.CalendarMonth, "Record dates, flow, and symptoms")
                 OpeningFeatureRow(Icons.Default.EditNote, "Keep personal notes and mood check-ins")
-                OpeningFeatureRow(Icons.Default.MenuBook, "Explore practical menstrual health education")
+                OpeningFeatureRow(Icons.AutoMirrored.Filled.MenuBook, "Explore practical menstrual health education")
             }
         }
 
@@ -345,6 +359,8 @@ fun OnboardingStepScreen(
     disclaimerAccepted: Boolean, onDisclaimerChange: (Boolean) -> Unit,
     onBack: () -> Unit, onNext: () -> Unit, onComplete: () -> Unit
 ) {
+    val currentYear = java.time.Year.now().value
+    val isBirthYearValid = birthYearStr.isBlank() || (birthYearStr.toIntOrNull()?.let { it in 1900..currentYear } == true)
     val canProceed = when (step) {
         1 -> true
         2 -> if (userMode == UserMode.SUPPORT_MODE.name) consentConfirmed else true
@@ -352,7 +368,7 @@ fun OnboardingStepScreen(
         4 -> true
         5 -> true
         6 -> true
-        7 -> disclaimerAccepted && (if (pinEnabled) pinCode.length >= 4 else true)
+        7 -> disclaimerAccepted && isBirthYearValid && (if (pinEnabled) pinCode.length in 4..6 else true)
         else -> true
     }
 
@@ -609,7 +625,8 @@ fun OnboardingStep2Identity(
                 label = "Pronouns (optional)",
                 options = mapOf(
                     "SHE_HER" to "She/Her", "HE_HIM" to "He/Him",
-                    "THEY_THEM" to "They/Them", "PREFER_NOT_TO_SAY" to "Prefer not to say"
+                    "THEY_THEM" to "They/Them", "CUSTOM" to "Custom",
+                    "PREFER_NOT_TO_SAY" to "Prefer not to say"
                 ),
                 selected = pronoun, onSelect = onPronounChange
             )
@@ -813,10 +830,20 @@ fun OnboardingStep7PinAndDisclaimer(
             placeholder = { Text("e.g. Luna") },
             modifier = Modifier.fillMaxWidth(), singleLine = true)
 
-        OutlinedTextField(value = birthYearStr, onValueChange = { if (it.length <= 4) onBirthYearChange(it) },
+        val currentYear = java.time.Year.now().value
+        val birthYearInvalid = birthYearStr.isNotBlank() && (birthYearStr.toIntOrNull()?.let { it in 1900..currentYear } != true)
+        OutlinedTextField(
+            value = birthYearStr,
+            onValueChange = { if (it.length <= 4 && it.all { ch -> ch.isDigit() }) onBirthYearChange(it) },
             label = { Text("Birth year (optional)") },
+            isError = birthYearInvalid,
+            supportingText = if (birthYearInvalid) {
+                { Text("Enter a year between 1900 and $currentYear, or leave blank.") }
+            } else null,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.fillMaxWidth(), singleLine = true)
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
 
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -882,51 +909,64 @@ fun OnboardingStep7PinAndDisclaimer(
 // ==========================================
 
 @Composable
-fun PinAuthScreen(storedPin: String, onAuthenticated: (String) -> Boolean) {
-    var pinInput by remember { mutableStateOf("") }
-    var errorMessage by remember { mutableStateOf("") }
+fun PinAuthScreen(
+    storedPin: String,
+    isLockedOut: () -> Boolean = { false },
+    onAuthenticated: (String) -> Boolean
+) {
+    var pinInput by rememberSaveable { mutableStateOf("") }
+    var errorMessage by rememberSaveable { mutableStateOf("") }
     val expectedPinLength = remember(storedPin) { SecurityUtils.extractPinLength(storedPin) }
 
     Column(
-        modifier = Modifier.fillMaxSize().statusBarsPadding().padding(24.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = 48.dp)) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = 24.dp)) {
             Box(
-                modifier = Modifier.size(80.dp).clip(CircleShape)
+                modifier = Modifier.size(72.dp).clip(CircleShape)
                     .background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(40.dp))
+                Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(36.dp))
             }
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
             Text("LunaCare", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
-            Text("Enter your passcode to unlock",
+            Text(
+                "Enter your passcode to unlock",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp, start = 32.dp, end = 32.dp))
-            Spacer(modifier = Modifier.height(40.dp))
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 8.dp, start = 24.dp, end = 24.dp)
+            )
+            Spacer(modifier = Modifier.height(28.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 repeat(expectedPinLength) { i ->
                     Box(
                         modifier = Modifier.size(16.dp).clip(CircleShape)
-                            .background(if (i < pinInput.length) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
+                            .background(if (i < pinInput.length) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
                     )
                 }
             }
             if (errorMessage.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(errorMessage, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                Text(errorMessage, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
             }
         }
-        Column(modifier = Modifier.padding(bottom = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Spacer(modifier = Modifier.height(24.dp))
+        Column(modifier = Modifier.padding(bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             val keys = listOf(listOf("1","2","3"), listOf("4","5","6"), listOf("7","8","9"), listOf("","0","Delete"))
             keys.forEach { row ->
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     row.forEach { digit ->
                         Box(
-                            modifier = Modifier.size(72.dp).clip(CircleShape)
+                            modifier = Modifier.size(68.dp).clip(CircleShape)
                                 .clickable(enabled = digit.isNotEmpty()) {
                                     if (digit == "Delete") {
                                         if (pinInput.isNotEmpty()) pinInput = pinInput.dropLast(1)
@@ -934,7 +974,11 @@ fun PinAuthScreen(storedPin: String, onAuthenticated: (String) -> Boolean) {
                                         pinInput += digit
                                         if (pinInput.length == expectedPinLength) {
                                             if (!onAuthenticated(pinInput)) {
-                                                errorMessage = "Incorrect passcode. Please try again."
+                                                errorMessage = if (isLockedOut()) {
+                                                    "Too many failed attempts. Please wait 15 minutes before trying again."
+                                                } else {
+                                                    "Incorrect passcode. Please try again."
+                                                }
                                                 pinInput = ""
                                             }
                                         }
@@ -943,9 +987,9 @@ fun PinAuthScreen(storedPin: String, onAuthenticated: (String) -> Boolean) {
                             contentAlignment = Alignment.Center
                         ) {
                             if (digit == "Delete") {
-                                Icon(Icons.Default.Backspace, null, tint = MaterialTheme.colorScheme.onBackground)
+                                Icon(Icons.AutoMirrored.Filled.Backspace, contentDescription = "Delete digit", tint = MaterialTheme.colorScheme.onBackground)
                             } else if (digit.isNotEmpty()) {
-                                Text(digit, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                                Text(digit, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -973,6 +1017,23 @@ fun MainAppLayout(profile: Profile, viewModel: LunaViewModel) {
 
     // Deep screens within tabs
     var activeDeepScreen by rememberSaveable { mutableStateOf<String?>(null) }
+
+    val isNotOnHomeTab = when (userMode) {
+        UserMode.SELF_TRACKING -> activeSelfTab != SelfTrackingTab.Home
+        UserMode.SUPPORT_MODE -> activeSupportTab != SupportTab.Home
+        UserMode.EDUCATION_ONLY -> activeEduTab != EducationTab.Home
+    }
+    BackHandler(enabled = drawerState.isOpen || activeDeepScreen != null || isNotOnHomeTab) {
+        when {
+            drawerState.isOpen -> drawerScope.launch { drawerState.close() }
+            activeDeepScreen != null -> activeDeepScreen = null
+            else -> {
+                activeSelfTab = SelfTrackingTab.Home
+                activeSupportTab = SupportTab.Home
+                activeEduTab = EducationTab.Home
+            }
+        }
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -1088,11 +1149,16 @@ fun MainAppLayout(profile: Profile, viewModel: LunaViewModel) {
                     "medicine_reminders" -> MedicineRemindersScreen(viewModel = viewModel, onBack = { activeDeepScreen = null })
                     "cup_tracker" -> CupCareTrackerScreen(viewModel = viewModel, onBack = { activeDeepScreen = null })
                     "health_awareness" -> HealthAwarenessScreen(viewModel = viewModel, onBack = { activeDeepScreen = null })
-                    "ai_assistant" -> AiAssistantScreen(profile = profile, viewModel = viewModel, onBack = { activeDeepScreen = null })
+                    "ai_assistant" -> AiAssistantScreen(
+                        profile = profile,
+                        viewModel = viewModel,
+                        onBack = { activeDeepScreen = null },
+                        onOpenEmergencyInfo = { activeDeepScreen = "health_awareness" }
+                    )
                     "permission_center" -> PermissionCenterScreen(profile = profile, viewModel = viewModel, onBack = { activeDeepScreen = null })
                     "profile_edit" -> ProfileEditScreen(profile = profile, viewModel = viewModel, onBack = { activeDeepScreen = null })
                     "bookmarks" -> BookmarksScreen(viewModel = viewModel, onBack = { activeDeepScreen = null })
-                    "care" -> CareTab(profile = profile, viewModel = viewModel)
+                    "care" -> CareTab(profile = profile, viewModel = viewModel, onBack = { activeDeepScreen = null })
                     else -> {
                         // Tab routing
                         when (userMode) {
@@ -1128,6 +1194,10 @@ fun MainAppLayout(profile: Profile, viewModel: LunaViewModel) {
                 }
             }
         }
+        // Composed after child screens so an open drawer always takes top Back precedence
+        BackHandler(enabled = drawerState.isOpen) {
+            drawerScope.launch { drawerState.close() }
+        }
     }
 }
 
@@ -1162,12 +1232,15 @@ fun SidePanel(profile: Profile, viewModel: LunaViewModel, onNavigateTo: (String)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(profile.displayName.ifBlank { "LunaCare User" }, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    if (!profile.username.isNullOrBlank()) {
+                        Text("@${profile.username}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                    }
                     val modeLabel = when (profile.userMode) {
                         UserMode.SELF_TRACKING.name -> "Self Tracking"
                         UserMode.SUPPORT_MODE.name -> "Support Mode"
                         else -> "Education Only"
                     }
-                    Text(modeLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                    Text(modeLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                 }
             }
             Spacer(modifier = Modifier.height(12.dp))
@@ -1175,8 +1248,7 @@ fun SidePanel(profile: Profile, viewModel: LunaViewModel, onNavigateTo: (String)
             val menuItems = listOf(
                 Triple(Icons.Default.Person, "Edit Profile", "profile_edit"),
                 Triple(Icons.Default.Security, "Permission Center", "permission_center"),
-                Triple(Icons.Default.PrivacyTip, "Privacy Settings", "settings"),
-                Triple(Icons.Default.Notifications, "Notification Panel", "notifications"),
+                Triple(Icons.Default.Notifications, "Notifications", "notifications"),
                 Triple(Icons.Default.Bookmark, "Bookmarks", "bookmarks"),
                 Triple(Icons.Default.MedicalServices, "Medical Journal", "medical_journal"),
                 Triple(Icons.Default.Alarm, "Medicine Reminders", "medicine_reminders"),
@@ -1184,7 +1256,7 @@ fun SidePanel(profile: Profile, viewModel: LunaViewModel, onNavigateTo: (String)
                 Triple(Icons.Default.LocalHospital, "Health Awareness", "health_awareness"),
                 Triple(Icons.Default.LocalPharmacy, "Care & Products", "care"),
                 Triple(Icons.Default.Psychology, "AI Assistant", "ai_assistant"),
-                Triple(Icons.Default.Palette, "Theme / Dark Mode", "settings")
+                Triple(Icons.Default.Settings, "Settings & Privacy", "settings")
             )
             menuItems.forEach { (icon, label, route) ->
                 NavigationDrawerItem(
@@ -1195,13 +1267,15 @@ fun SidePanel(profile: Profile, viewModel: LunaViewModel, onNavigateTo: (String)
                     modifier = Modifier.padding(vertical = 2.dp)
                 )
             }
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-            NavigationDrawerItem(
-                icon = { Icon(Icons.Default.Logout, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp)) },
-                label = { Text("Logout", color = MaterialTheme.colorScheme.error) },
-                selected = false,
-                onClick = { viewModel.logout() }
-            )
+            if (profile.securityPinEnabled) {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp)) },
+                    label = { Text("Lock App") },
+                    selected = false,
+                    onClick = { viewModel.lockApp(); onClose() }
+                )
+            }
 
             // Version
             Spacer(modifier = Modifier.height(16.dp))
@@ -1443,29 +1517,32 @@ private fun DashboardShortcutCard(label: String, icon: ImageVector, modifier: Mo
 // CYCLE TAB
 // ==========================================
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CycleTab(profile: Profile, viewModel: LunaViewModel) {
     val periodLogs by viewModel.periodLogs.collectAsState()
-    var showLogDialog by remember { mutableStateOf(false) }
-    var startDate by remember { mutableStateOf(CycleUtils.getTodayString()) }
-    var endDate by remember { mutableStateOf("") }
-    var flowLevel by remember { mutableStateOf("Medium") }
-    var selectedSymptoms by remember { mutableStateOf(setOf<String>()) }
-    var notes by remember { mutableStateOf("") }
+    var showLogDialog by rememberSaveable { mutableStateOf(false) }
+    var startDate by rememberSaveable { mutableStateOf(CycleUtils.getTodayString()) }
+    var endDate by rememberSaveable { mutableStateOf("") }
+    var flowLevel by rememberSaveable { mutableStateOf("Medium") }
+    var selectedSymptoms by rememberSaveable { mutableStateOf(listOf<String>()) }
+    var notes by rememberSaveable { mutableStateOf("") }
+    var dateError by rememberSaveable { mutableStateOf<String?>(null) }
     val symptomsList = listOf("Cramps", "Headache", "Back pain", "Breast tenderness", "Acne", "Fatigue", "Bloating", "Nausea", "Mood swings", "Anxiety", "Low mood", "Irritability", "Sleep issues", "Spotting", "Clots")
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column {
+                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                     Text("Period Tracking", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
-                    Text("Track logs for personalised cycle insights", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                    Text("Record start dates, flow, and symptoms for cycle estimates", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Button(onClick = { startDate = CycleUtils.getTodayString(); endDate = ""; flowLevel = "Medium"; selectedSymptoms = emptySet(); notes = ""; showLogDialog = true },
+                Button(
+                    onClick = { startDate = CycleUtils.getTodayString(); endDate = ""; flowLevel = "Medium"; selectedSymptoms = emptyList(); notes = ""; dateError = null; showLogDialog = true },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                    modifier = Modifier.testTag("add_period_log_button")
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("add_period_log_button")
                 ) {
-                    Icon(Icons.Default.Add, null); Spacer(modifier = Modifier.width(4.dp)); Text("Add Log")
+                    Icon(Icons.Default.Add, contentDescription = null); Spacer(modifier = Modifier.width(4.dp)); Text("Add Log")
                 }
             }
         }
@@ -1487,7 +1564,7 @@ fun CycleTab(profile: Profile, viewModel: LunaViewModel) {
         if (periodLogs.isEmpty()) {
             item {
                 Column(modifier = Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.CalendarToday, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f))
+                    Icon(Icons.Default.CalendarToday, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.outline)
                     Spacer(modifier = Modifier.height(16.dp))
                     Text("No periods recorded", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
                     Spacer(Modifier.height(8.dp))
@@ -1496,32 +1573,37 @@ fun CycleTab(profile: Profile, viewModel: LunaViewModel) {
                 }
             }
         } else {
-            items(periodLogs) { log ->
+            items(periodLogs, key = { it.id }) { log ->
+                val decryptedNotes = remember(log.notesEncrypted) { log.notesEncrypted?.let { SecurityUtils.decrypt(it) } }
                 Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text("Started: ${CycleUtils.formatDisplayDate(log.startDate)}", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
-                                if (!log.endDate.isNullOrEmpty()) Text("Ended: ${CycleUtils.formatDisplayDate(log.endDate)}", style = MaterialTheme.typography.bodySmall)
+                                if (!log.endDate.isNullOrEmpty()) Text("Ended: ${CycleUtils.formatDisplayDate(log.endDate)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 else Text("Active / Ongoing", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                             }
                             IconButton(onClick = { viewModel.deletePeriodLog(log.id) }) {
-                                Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
+                                Icon(Icons.Default.Delete, contentDescription = "Delete period log", tint = MaterialTheme.colorScheme.error)
                             }
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         Box(modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.primaryContainer).padding(horizontal = 8.dp, vertical = 4.dp)) {
-                            Text("Flow: ${log.flowLevel}", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                            Text("Flow: ${log.flowLevel}", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onPrimaryContainer)
                         }
                         if (log.symptoms.isNotEmpty()) {
                             Spacer(modifier = Modifier.height(8.dp))
-                            Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 log.symptoms.forEach { s ->
-                                    Box(modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer).padding(horizontal = 8.dp, vertical = 4.dp)) {
-                                        Text(s, fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
+                                    Box(modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer).padding(horizontal = 10.dp, vertical = 4.dp)) {
+                                        Text(s, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
                                     }
                                 }
                             }
+                        }
+                        if (!decryptedNotes.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(decryptedNotes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -1535,36 +1617,46 @@ fun CycleTab(profile: Profile, viewModel: LunaViewModel) {
             title = { Text("Log Period") },
             text = {
                 Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(value = startDate, onValueChange = { startDate = it }, label = { Text("Start Date (YYYY-MM-DD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    OutlinedTextField(value = endDate, onValueChange = { endDate = it }, label = { Text("End Date (optional)") }, placeholder = { Text("Leave blank if ongoing") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = startDate, onValueChange = { startDate = it; dateError = null }, label = { Text("Start Date (YYYY-MM-DD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = endDate, onValueChange = { endDate = it; dateError = null }, label = { Text("End Date (optional)") }, placeholder = { Text("Leave blank if ongoing") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                     Text("Flow Level", fontWeight = FontWeight.Bold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("Spotting", "Light", "Medium", "Heavy").forEach { level ->
-                            val sel = flowLevel == level
-                            Box(modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
-                                .background(if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
-                                .clickable { flowLevel = level }.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
-                                Text(level, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
+                            FilterChip(
+                                selected = flowLevel == level,
+                                onClick = { flowLevel = level },
+                                label = { Text(level) }
+                            )
                         }
                     }
                     Text("Symptoms", fontWeight = FontWeight.Bold)
-                    LazyVerticalGrid(columns = GridCells.Fixed(2), modifier = Modifier.height(200.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        items(symptomsList) { s ->
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        symptomsList.forEach { s ->
                             val checked = selectedSymptoms.contains(s)
-                            Row(modifier = Modifier.fillMaxWidth().clickable { selectedSymptoms = if (checked) selectedSymptoms - s else selectedSymptoms + s }, verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(checked = checked, onCheckedChange = { selectedSymptoms = if (checked) selectedSymptoms - s else selectedSymptoms + s })
-                                Text(s, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
+                            FilterChip(
+                                selected = checked,
+                                onClick = { selectedSymptoms = if (checked) selectedSymptoms - s else selectedSymptoms + s },
+                                label = { Text(s) }
+                            )
                         }
                     }
                     OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes (private)") }, modifier = Modifier.fillMaxWidth())
+                    if (dateError != null) {
+                        Text(dateError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             },
             confirmButton = {
                 Button(onClick = {
-                    if (CycleUtils.isValidDate(startDate)) {
-                        viewModel.addPeriodLog(startDate, endDate.ifBlank { null }, flowLevel, selectedSymptoms.toList(), notes.ifBlank { null })
+                    val trimmedStart = startDate.trim()
+                    val trimmedEnd = endDate.trim().ifBlank { null }
+                    if (!CycleUtils.isValidDate(trimmedStart)) {
+                        dateError = "Enter a real calendar start date in YYYY-MM-DD format."
+                    } else if (!CycleUtils.isValidDateRange(trimmedStart, trimmedEnd)) {
+                        dateError = "End date must be a real calendar date on or after start date."
+                    } else {
+                        dateError = null
+                        viewModel.addPeriodLog(trimmedStart, trimmedEnd, flowLevel, selectedSymptoms, notes.ifBlank { null })
                         showLogDialog = false
                     }
                 }) { Text("Save") }
@@ -1578,50 +1670,53 @@ fun CycleTab(profile: Profile, viewModel: LunaViewModel) {
 // BEHAVIOUR CHECK-IN TAB (full 17-field)
 // ==========================================
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BehaviourCheckInTab(profile: Profile, viewModel: LunaViewModel) {
     val behaviourLogs by viewModel.behaviourLogs.collectAsState()
-    var showDialog by remember { mutableStateOf(false) }
-    var showCrisisOverlay by remember { mutableStateOf(false) }
+    var showDialog by rememberSaveable { mutableStateOf(false) }
+    var showCrisisOverlay by rememberSaveable { mutableStateOf(false) }
 
     // Dialog state
-    var mood by remember { mutableStateOf("Okay") }
-    var stressLevel by remember { mutableStateOf(5f) }
-    var anxietyLevel by remember { mutableStateOf(5f) }
-    var sleepHours by remember { mutableStateOf(7f) }
-    var sleepQuality by remember { mutableStateOf(6f) }
-    var painLevel by remember { mutableStateOf(2f) }
-    var energyLevel by remember { mutableStateOf(6f) }
-    var hydration by remember { mutableStateOf("Okay") }
-    var notes by remember { mutableStateOf("") }
+    var mood by rememberSaveable { mutableStateOf("Okay") }
+    var stressLevel by rememberSaveable { mutableStateOf(5f) }
+    var anxietyLevel by rememberSaveable { mutableStateOf(5f) }
+    var sleepHours by rememberSaveable { mutableStateOf(7f) }
+    var sleepQuality by rememberSaveable { mutableStateOf(6f) }
+    var painLevel by rememberSaveable { mutableStateOf(2f) }
+    var energyLevel by rememberSaveable { mutableStateOf(6f) }
+    var hydration by rememberSaveable { mutableStateOf("Okay") }
+    var notes by rememberSaveable { mutableStateOf("") }
 
-    val moodOptions = listOf("Great" to "😄", "Good" to "🙂", "Okay" to "😐", "Low" to "😔", "Anxious" to "😟", "Overwhelmed" to "😰", "Very low" to "😢")
+    val moodOptions = listOf("Great", "Good", "Okay", "Low", "Anxious", "Overwhelmed", "Very low")
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column {
+                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                     Text("Wellbeing Check-In", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
-                    Text("Private daily reflection", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                    Text("Private daily reflection", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Button(onClick = { mood = "Okay"; stressLevel = 5f; anxietyLevel = 5f; sleepHours = 7f; sleepQuality = 6f; painLevel = 2f; energyLevel = 6f; hydration = "Okay"; notes = ""; showDialog = true },
+                Button(
+                    onClick = { mood = "Okay"; stressLevel = 5f; anxietyLevel = 5f; sleepHours = 7f; sleepQuality = 6f; painLevel = 2f; energyLevel = 6f; hydration = "Okay"; notes = ""; showDialog = true },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                    modifier = Modifier.testTag("add_mood_log_button")
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("add_mood_log_button")
                 ) {
-                    Icon(Icons.Default.Add, null); Spacer(modifier = Modifier.width(4.dp)); Text("Check In")
+                    Icon(Icons.Default.Add, contentDescription = null); Spacer(modifier = Modifier.width(4.dp)); Text("Check In")
                 }
             }
         }
 
         item {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("✨ Wellbeing Insights", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                    Text("Personal reflections", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        if (behaviourLogs.size >= 3) "Patterns from your check-ins appear here. Remember: these are reflections, not diagnoses."
-                        else "Log a few check-ins to see gentle patterns. Not diagnostic — just for self-awareness.",
-                        style = MaterialTheme.typography.bodySmall
+                        if (behaviourLogs.size >= 3) "You have ${behaviourLogs.size} saved check-ins on this device. Entries are personal notes, not medical diagnoses."
+                        else "Record daily check-ins to keep track of sleep, energy, stress, and comfort over time.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -1630,36 +1725,40 @@ fun BehaviourCheckInTab(profile: Profile, viewModel: LunaViewModel) {
         if (behaviourLogs.isEmpty()) {
             item {
                 Column(modifier = Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Mood, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f))
+                    Icon(Icons.Default.Mood, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.outline)
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("No check-ins yet. Tap 'Check In' to start your daily reflection.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                    Text("No check-ins yet", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Tap Check In to record how you are feeling today.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         } else {
-            items(behaviourLogs) { log ->
+            items(behaviourLogs, key = { it.id }) { log ->
+                val decryptedNotes = remember(log.notesEncrypted) { log.notesEncrypted?.let { SecurityUtils.decrypt(it) } }
                 Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
                     containerColor = if (log.crisisFlag) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
                     else MaterialTheme.colorScheme.surface
                 )) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(moodOptions.find { it.first == log.mood }?.second ?: "😐", fontSize = 28.sp)
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text(log.mood, fontWeight = FontWeight.Bold)
-                                    Text(CycleUtils.formatDisplayDate(log.logDate), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-                                }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(log.mood, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                                Text(CycleUtils.formatDisplayDate(log.logDate), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             IconButton(onClick = { viewModel.deleteBehaviourLog(log.id) }) {
-                                Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
+                                Icon(Icons.Default.Delete, contentDescription = "Delete check-in", tint = MaterialTheme.colorScheme.error)
                             }
                         }
                         Spacer(modifier = Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            MiniChip("😴 Sleep ${log.sleepHours}h")
-                            MiniChip("😓 Stress ${log.stressLevel}/10")
-                            MiniChip("⚡ Energy ${log.energyLevel}/10")
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            MiniChip("Sleep ${log.sleepHours.toInt()}h (${log.sleepQuality}/10)")
+                            MiniChip("Stress ${log.stressLevel}/10")
+                            MiniChip("Energy ${log.energyLevel}/10")
+                            if (log.painLevel > 0) MiniChip("Pain ${log.painLevel}/10")
+                        }
+                        if (!decryptedNotes.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(decryptedNotes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         if (log.crisisFlag) {
                             Spacer(modifier = Modifier.height(8.dp))
@@ -1682,18 +1781,13 @@ fun BehaviourCheckInTab(profile: Profile, viewModel: LunaViewModel) {
             text = {
                 Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text("How are you feeling?", fontWeight = FontWeight.Bold)
-                    Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        moodOptions.forEach { (m, emoji) ->
-                            val sel = mood == m
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.clip(RoundedCornerShape(10.dp))
-                                    .background(if (sel) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-                                    .clickable { mood = m }.padding(10.dp)
-                            ) {
-                                Text(emoji, fontSize = 28.sp)
-                                Text(m, fontSize = 10.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal, color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
-                            }
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        moodOptions.forEach { m ->
+                            FilterChip(
+                                selected = mood == m,
+                                onClick = { mood = m },
+                                label = { Text(m) }
+                            )
                         }
                     }
                     CheckInSlider("Stress", stressLevel) { stressLevel = it }
@@ -1704,15 +1798,15 @@ fun BehaviourCheckInTab(profile: Profile, viewModel: LunaViewModel) {
                         Text("Sleep hours: ${sleepHours.toInt()}h", fontWeight = FontWeight.Medium)
                         Slider(value = sleepHours, onValueChange = { sleepHours = it }, valueRange = 0f..12f, steps = 11)
                     }
+                    CheckInSlider("Sleep quality", sleepQuality) { sleepQuality = it }
                     Text("Hydration", fontWeight = FontWeight.Bold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("Low", "Okay", "Good", "Great").forEach { h ->
-                            val sel = hydration == h
-                            Box(modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
-                                .background(if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
-                                .clickable { hydration = h }.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
-                                Text(h, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                            }
+                            FilterChip(
+                                selected = hydration == h,
+                                onClick = { hydration = h },
+                                label = { Text(h) }
+                            )
                         }
                     }
                     OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Reflections (optional, private)") }, modifier = Modifier.fillMaxWidth())
@@ -1723,7 +1817,7 @@ fun BehaviourCheckInTab(profile: Profile, viewModel: LunaViewModel) {
                     val isCrisis = CrisisDetector.detect(notes, mood)
                     viewModel.addBehaviourLog(
                         mood = mood, stressLevel = stressLevel.toInt(), anxietyLevel = anxietyLevel.toInt(),
-                        sleepHours = sleepHours, sleepQuality = 5, painLevel = painLevel.toInt(),
+                        sleepHours = sleepHours, sleepQuality = sleepQuality.toInt(), painLevel = painLevel.toInt(),
                         energyLevel = energyLevel.toInt(), hydrationLevel = hydration,
                         foodCraving = null, caffeineIntake = null, movement = null,
                         studyWorkPressure = 5, relationshipStress = 5, socialMediaOverload = 5,
@@ -1796,8 +1890,13 @@ fun CrisisOverlay(onDismiss: () -> Unit) {
 @Composable
 fun LearningTab(viewModel: LunaViewModel) {
     val bookmarksState by viewModel.bookmarks.collectAsState()
-    var selectedSlug by remember { mutableStateOf<String?>(null) }
-    var selectedCategory by remember { mutableStateOf("All") }
+    var selectedSlug by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedCategory by rememberSaveable { mutableStateOf("All") }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+
+    BackHandler(enabled = selectedSlug != null) {
+        selectedSlug = null
+    }
 
     if (selectedSlug != null) {
         val article = LunaContent.articles.firstOrNull { it.slug == selectedSlug }
@@ -1811,7 +1910,24 @@ fun LearningTab(viewModel: LunaViewModel) {
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Text("Resource Library", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
-            Text("Menstrual cup guides, period education, and emotional wellbeing", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+            Text("Menstrual cup guides, period education, and emotional wellbeing", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        item {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Search articles…") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = if (searchQuery.isNotEmpty()) {
+                    {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear search")
+                        }
+                    }
+                } else null,
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().testTag("learn_search_field")
+            )
         }
         item {
             val cats = listOf("All", "Menstrual Cup", "Period & PMS", "Health Awareness", "Emotional Wellbeing", "Bookmarks")
@@ -1824,17 +1940,17 @@ fun LearningTab(viewModel: LunaViewModel) {
         }
 
         // Menstrual cup protocol card
-        if (selectedCategory == "All" || selectedCategory == "Menstrual Cup") {
+        if ((selectedCategory == "All" || selectedCategory == "Menstrual Cup") && searchQuery.isBlank()) {
             item {
-                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))) {
+                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("🔑 Safe Cup Protocol", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                        Text("Safe Cup Care Steps", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(8.dp))
                         listOf("Wash hands with unscented soap", "Fold using C-fold or Punch-down", "Relax pelvic floor muscles", "Insert directed slightly backward", "Rotate to verify seal", "Pinch base to break seal before removal", "Empty and clean every 8–12 hours").forEach { step ->
                             Row(modifier = Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.CheckCircle, null, tint = SuccessGreen, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text(step, fontSize = 13.sp)
+                                Text(step, style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
@@ -1843,31 +1959,37 @@ fun LearningTab(viewModel: LunaViewModel) {
         }
 
         val filtered = LunaContent.articles.filter { art ->
-            when (selectedCategory) {
+            val categoryMatches = when (selectedCategory) {
                 "All" -> true
                 "Bookmarks" -> bookmarksState.any { it.articleSlug == art.slug }
                 else -> art.category == selectedCategory
             }
+            val query = searchQuery.trim()
+            val queryMatches = query.isEmpty() ||
+                art.title.contains(query, ignoreCase = true) ||
+                art.content.contains(query, ignoreCase = true) ||
+                art.category.contains(query, ignoreCase = true)
+            categoryMatches && queryMatches
         }
 
         if (filtered.isEmpty()) {
-            item { Text("No articles in this category.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(24.dp)) }
+            item { Text("No matching articles found.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth().padding(24.dp)) }
         } else {
-            items(filtered) { article ->
+            items(filtered, key = { it.slug }) { article ->
                 val isBookmarked = bookmarksState.any { it.articleSlug == article.slug }
                 Card(modifier = Modifier.fillMaxWidth().clickable { selectedSlug = article.slug }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(article.category, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            Text(article.category, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(article.title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                            Text(article.content.take(90) + "…", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                            Text(article.content.take(90) + "…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             IconButton(onClick = { viewModel.toggleBookmark(article.slug) }) {
-                                Icon(if (isBookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder, null, tint = MaterialTheme.colorScheme.primary)
+                                Icon(if (isBookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder, contentDescription = if (isBookmarked) "Remove bookmark" else "Save bookmark", tint = MaterialTheme.colorScheme.primary)
                             }
-                            Icon(Icons.Default.ChevronRight, null)
+                            Icon(Icons.Default.ChevronRight, contentDescription = null)
                         }
                     }
                 }
@@ -1908,7 +2030,7 @@ fun ArticleDetailView(article: EducationArticle, isBookmarked: Boolean, onBookma
 // ==========================================
 
 @Composable
-fun CareTab(profile: Profile, viewModel: LunaViewModel) {
+fun CareTab(profile: Profile, viewModel: LunaViewModel, onBack: (() -> Unit)? = null) {
     val context = LocalContext.current
     val privacyMode = try { LocationPrivacyMode.valueOf(profile.locationPrivacyMode) } catch (e: Exception) { LocationPrivacyMode.OFF }
     val tempLat by viewModel.tempLat.collectAsState()
@@ -1917,8 +2039,15 @@ fun CareTab(profile: Profile, viewModel: LunaViewModel) {
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
-            Text("Care & Products", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
-            Text("Discover period care products and find them nearby", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (onBack != null) {
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
+                }
+                Column {
+                    Text("Care & Products", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+                    Text("Discover period care products and open nearby Maps searches", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
 
         // Location privacy notice
@@ -1969,7 +2098,9 @@ fun CareTab(profile: Profile, viewModel: LunaViewModel) {
                     Button(
                         onClick = {
                             val url = LocationPrivacyManager.buildGoogleMapsSearchUrl(product.nearbyQuery, tempLat, tempLng)
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                            }
                             viewModel.clearTempLocation()
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -1992,33 +2123,41 @@ fun CareTab(profile: Profile, viewModel: LunaViewModel) {
 @Composable
 fun JournalTab(profile: Profile, viewModel: LunaViewModel) {
     val entries by viewModel.journalEntries.collectAsState()
-    var showDialog by remember { mutableStateOf(false) }
-    var title by remember { mutableStateOf("") }
-    var body by remember { mutableStateOf("") }
-    var search by remember { mutableStateOf("") }
+    var showDialog by rememberSaveable { mutableStateOf(false) }
+    var title by rememberSaveable { mutableStateOf("") }
+    var body by rememberSaveable { mutableStateOf("") }
+    var search by rememberSaveable { mutableStateOf("") }
+
+    val decryptedEntries = remember(entries) {
+        entries.map { entry -> entry to SecurityUtils.decryptJournalBody(entry.body) }
+    }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column {
+                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                     Text("Wellness Journal", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
-                    Text("Private, offline, encrypted reflections", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                    Text("Private, on-device reflections", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Button(onClick = { title = ""; body = ""; showDialog = true },
+                Button(
+                    onClick = { title = ""; body = ""; showDialog = true },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                    modifier = Modifier.testTag("create_journal_button")) {
-                    Icon(Icons.Default.Create, null); Spacer(modifier = Modifier.width(4.dp)); Text("Write")
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("create_journal_button")
+                ) {
+                    Icon(Icons.Default.Create, contentDescription = null); Spacer(modifier = Modifier.width(4.dp)); Text("Write")
                 }
             }
         }
         item {
-            OutlinedTextField(value = search, onValueChange = { search = it }, placeholder = { Text("Search…") }, leadingIcon = { Icon(Icons.Default.Search, null) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = search, onValueChange = { search = it }, placeholder = { Text("Search…") }, leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }, singleLine = true, modifier = Modifier.fillMaxWidth())
         }
-        val filtered = entries.filter { it.title.contains(search, true) || it.body.contains(search, true) }
+        val filtered = decryptedEntries.filter { (entry, plainBody) ->
+            entry.title.contains(search, true) || plainBody.contains(search, true)
+        }
         if (filtered.isEmpty()) {
             item {
                 Column(modifier = Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.EditNote, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f))
+                    Icon(Icons.Default.EditNote, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.outline)
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(if (search.isBlank()) "Your journal is empty" else "No matching entries", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
                     Spacer(Modifier.height(8.dp))
@@ -2030,15 +2169,15 @@ fun JournalTab(profile: Profile, viewModel: LunaViewModel) {
                 }
             }
         } else {
-            items(filtered) { entry ->
+            items(filtered, key = { it.first.id }) { (entry, plainBody) ->
                 Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(entry.title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                            IconButton(onClick = { viewModel.deleteJournalEntry(entry.id) }) { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
+                            Text(entry.title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
+                            IconButton(onClick = { viewModel.deleteJournalEntry(entry.id) }) { Icon(Icons.Default.Delete, contentDescription = "Delete journal entry", tint = MaterialTheme.colorScheme.error) }
                         }
                         Text(CycleUtils.formatDisplayDate(entry.date), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
-                        Text(entry.body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f))
+                        Text(plainBody, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }
@@ -2064,55 +2203,61 @@ fun JournalTab(profile: Profile, viewModel: LunaViewModel) {
 // MEDICAL JOURNAL SCREEN
 // ==========================================
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MedicalJournalScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
     val entries by viewModel.medicalJournalEntries.collectAsState()
-    var showDialog by remember { mutableStateOf(false) }
-    var entryDate by remember { mutableStateOf(CycleUtils.getTodayString()) }
-    var category by remember { mutableStateOf("General") }
-    var entryTitle by remember { mutableStateOf("") }
-    var symptoms by remember { mutableStateOf(setOf<String>()) }
-    var painLevel by remember { mutableStateOf(0f) }
-    var notes by remember { mutableStateOf("") }
-    var doctorVisit by remember { mutableStateOf(false) }
-    var nextAppt by remember { mutableStateOf("") }
+    var showDialog by rememberSaveable { mutableStateOf(false) }
+    var entryDate by rememberSaveable { mutableStateOf(CycleUtils.getTodayString()) }
+    var category by rememberSaveable { mutableStateOf("General") }
+    var entryTitle by rememberSaveable { mutableStateOf("") }
+    var symptoms by rememberSaveable { mutableStateOf(listOf<String>()) }
+    var painLevel by rememberSaveable { mutableStateOf(0f) }
+    var notes by rememberSaveable { mutableStateOf("") }
+    var doctorVisit by rememberSaveable { mutableStateOf(false) }
+    var nextAppt by rememberSaveable { mutableStateOf("") }
+    var journalDateError by rememberSaveable { mutableStateOf<String?>(null) }
     val categories = listOf("General", "Symptom", "Doctor Visit", "Medication", "Surgery/Procedure", "Lab Result", "Other")
     val symptomsList = listOf("Cramps", "Bloating", "Headache", "Back pain", "Fatigue", "Nausea", "Spotting", "Clots", "Acne", "Mood changes", "Breast tenderness")
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                     Text("Medical Journal", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
                 }
-                Button(onClick = { entryDate = CycleUtils.getTodayString(); category = "General"; entryTitle = ""; symptoms = emptySet(); painLevel = 0f; notes = ""; doctorVisit = false; nextAppt = ""; showDialog = true },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
-                    Icon(Icons.Default.Add, null); Spacer(modifier = Modifier.width(4.dp)); Text("Add")
+                Button(
+                    onClick = { entryDate = CycleUtils.getTodayString(); category = "General"; entryTitle = ""; symptoms = emptyList(); painLevel = 0f; notes = ""; doctorVisit = false; nextAppt = ""; journalDateError = null; showDialog = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null); Spacer(modifier = Modifier.width(4.dp)); Text("Add")
                 }
             }
         }
         item {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Text(LunaContent.GLOBAL_DISCLAIMER, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         item {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f))) {
-                Text("⚠️ Only take medicine as advised by a qualified healthcare professional or according to the product label.",
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f))) {
+                Text("Only take medicine as advised by a qualified healthcare professional or according to the product label.",
                     modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium))
             }
         }
         if (entries.isEmpty()) {
             item {
                 Column(modifier = Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.MedicalServices, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f))
+                    Icon(Icons.Default.MedicalServices, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.outline)
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("No journal entries yet. Record your symptoms, doctor visits, or health observations.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                    Text("No journal entries yet. Record your symptoms, doctor visits, or health observations.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         } else {
-            items(entries) { entry ->
+            items(entries, key = { it.id }) { entry ->
+                val decryptedNotes = remember(entry.notesEncrypted) { entry.notesEncrypted?.let { SecurityUtils.decrypt(it) } }
                 Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -2120,7 +2265,7 @@ fun MedicalJournalScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
                                 Text(entry.title, fontWeight = FontWeight.Bold)
                                 Text("${entry.category} · ${CycleUtils.formatDisplayDate(entry.entryDate)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                             }
-                            IconButton(onClick = { viewModel.deleteMedicalJournalEntry(entry.id) }) { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
+                            IconButton(onClick = { viewModel.deleteMedicalJournalEntry(entry.id) }) { Icon(Icons.Default.Delete, contentDescription = "Delete medical entry", tint = MaterialTheme.colorScheme.error) }
                         }
                         if (entry.painLevel > 0) {
                             Spacer(modifier = Modifier.height(8.dp))
@@ -2131,13 +2276,30 @@ fun MedicalJournalScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
                                 }
                             }
                         }
+                        if (entry.symptoms.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                entry.symptoms.forEach { s ->
+                                    MiniChip(s)
+                                }
+                            }
+                        }
                         if (entry.doctorVisit) {
-                            Spacer(modifier = Modifier.height(4.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.LocalHospital, null, tint = SuccessGreen, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Doctor visit recorded", style = MaterialTheme.typography.bodySmall, color = SuccessGreen)
+                                Text(
+                                    if (!entry.nextAppointment.isNullOrBlank()) "Doctor visit · Next appointment: ${CycleUtils.formatDisplayDate(entry.nextAppointment)}"
+                                    else "Doctor visit recorded",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = SuccessGreen
+                                )
                             }
+                        }
+                        if (!decryptedNotes.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(decryptedNotes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -2151,7 +2313,7 @@ fun MedicalJournalScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
             text = {
                 Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(value = entryTitle, onValueChange = { entryTitle = it }, label = { Text("Title") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    OutlinedTextField(value = entryDate, onValueChange = { entryDate = it }, label = { Text("Date (YYYY-MM-DD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = entryDate, onValueChange = { entryDate = it; journalDateError = null }, label = { Text("Date (YYYY-MM-DD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                     Text("Category", fontWeight = FontWeight.Bold)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(categories) { cat ->
@@ -2163,13 +2325,14 @@ fun MedicalJournalScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
                         Slider(value = painLevel, onValueChange = { painLevel = it }, valueRange = 0f..10f, steps = 9)
                     }
                     Text("Symptoms", fontWeight = FontWeight.Bold)
-                    LazyVerticalGrid(columns = GridCells.Fixed(2), modifier = Modifier.height(150.dp)) {
-                        items(symptomsList) { s ->
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        symptomsList.forEach { s ->
                             val checked = symptoms.contains(s)
-                            Row(modifier = Modifier.clickable { symptoms = if (checked) symptoms - s else symptoms + s }, verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(checked = checked, onCheckedChange = { symptoms = if (checked) symptoms - s else symptoms + s })
-                                Text(s, fontSize = 12.sp)
-                            }
+                            FilterChip(
+                                selected = checked,
+                                onClick = { symptoms = if (checked) symptoms - s else symptoms + s },
+                                label = { Text(s) }
+                            )
                         }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2178,18 +2341,27 @@ fun MedicalJournalScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
                         Text("Doctor visit")
                     }
                     if (doctorVisit) {
-                        OutlinedTextField(value = nextAppt, onValueChange = { nextAppt = it }, label = { Text("Next appointment (YYYY-MM-DD, optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                        OutlinedTextField(value = nextAppt, onValueChange = { nextAppt = it; journalDateError = null }, label = { Text("Next appointment (YYYY-MM-DD, optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                     }
                     OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Private notes (encrypted)") }, modifier = Modifier.fillMaxWidth())
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f))) {
-                        Text("⚠️ Only take medicine as advised by a qualified healthcare professional or according to the product label.", modifier = Modifier.padding(10.dp), style = MaterialTheme.typography.bodySmall)
+                    if (journalDateError != null) {
+                        Text(journalDateError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },
             confirmButton = {
                 Button(onClick = {
-                    viewModel.addMedicalJournalEntry(entryDate, category, entryTitle.ifBlank { "Entry" }, symptoms.toList(), painLevel.toInt(), null, null, null, doctorVisit, nextAppt.ifBlank { null }, notes.ifBlank { null })
-                    showDialog = false
+                    val trimmedDate = entryDate.trim()
+                    val trimmedNextAppt = nextAppt.trim().ifBlank { null }
+                    if (!CycleUtils.isValidDate(trimmedDate)) {
+                        journalDateError = "Enter a real calendar entry date in YYYY-MM-DD format."
+                    } else if (trimmedNextAppt != null && !CycleUtils.isValidDate(trimmedNextAppt)) {
+                        journalDateError = "Enter a real calendar appointment date in YYYY-MM-DD format."
+                    } else {
+                        journalDateError = null
+                        viewModel.addMedicalJournalEntry(trimmedDate, category, entryTitle.ifBlank { "Entry" }, symptoms, painLevel.toInt(), null, null, null, doctorVisit, trimmedNextAppt, notes.ifBlank { null })
+                        showDialog = false
+                    }
                 }) { Text("Save") }
             },
             dismissButton = { TextButton(onClick = { showDialog = false }) { Text("Cancel") } }
@@ -2204,24 +2376,28 @@ fun MedicalJournalScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
 @Composable
 fun MedicineRemindersScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
     val reminders by viewModel.medicalReminders.collectAsState()
-    var showDialog by remember { mutableStateOf(false) }
-    var reminderTitle by remember { mutableStateOf("") }
-    var reminderType by remember { mutableStateOf("Medication") }
-    var reminderTime by remember { mutableStateOf("08:00") }
-    var repeatRule by remember { mutableStateOf("Daily") }
-    var startDate by remember { mutableStateOf(CycleUtils.getTodayString()) }
-    var reasonNote by remember { mutableStateOf("") }
+    var showDialog by rememberSaveable { mutableStateOf(false) }
+    var reminderTitle by rememberSaveable { mutableStateOf("") }
+    var reminderType by rememberSaveable { mutableStateOf("Medication") }
+    var reminderTime by rememberSaveable { mutableStateOf("08:00") }
+    var repeatRule by rememberSaveable { mutableStateOf("Daily") }
+    var startDate by rememberSaveable { mutableStateOf(CycleUtils.getTodayString()) }
+    var reasonNote by rememberSaveable { mutableStateOf("") }
+    var reminderError by rememberSaveable { mutableStateOf<String?>(null) }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                     Text("Medicine Reminders", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
                 }
-                Button(onClick = { reminderTitle = ""; reminderType = "Medication"; reminderTime = "08:00"; repeatRule = "Daily"; startDate = CycleUtils.getTodayString(); reasonNote = ""; showDialog = true },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
-                    Icon(Icons.Default.Add, null); Spacer(modifier = Modifier.width(4.dp)); Text("Add")
+                Button(
+                    onClick = { reminderTitle = ""; reminderType = "Medication"; reminderTime = "08:00"; repeatRule = "Daily"; startDate = CycleUtils.getTodayString(); reasonNote = ""; reminderError = null; showDialog = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null); Spacer(modifier = Modifier.width(4.dp)); Text("Add")
                 }
             }
         }
@@ -2230,34 +2406,34 @@ fun MedicineRemindersScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
                 Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Only take medicine as advised by a qualified healthcare professional or according to the product label.", style = MaterialTheme.typography.bodySmall)
+                    Text("Saved locally as an in-app checklist (background OS alarms are not scheduled in this build). Only take medicine as advised by a qualified clinician or product label.", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
         if (reminders.isEmpty()) {
             item {
                 Column(modifier = Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Alarm, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f))
+                    Icon(Icons.Default.Alarm, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.outline)
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("No reminders yet. Add your medication or supplement reminders.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                    Text("No reminders yet. Add your medication or supplement checklist items.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         } else {
-            items(reminders) { reminder ->
+            items(reminders, key = { it.id }) { reminder ->
                 Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Alarm, null, tint = if (reminder.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f), modifier = Modifier.size(32.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Default.Alarm, null, tint = if (reminder.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, modifier = Modifier.size(32.dp))
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(reminder.title, fontWeight = FontWeight.Bold)
-                                Text("${reminder.reminderTime} · ${reminder.repeatRule}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                                Text("${reminder.reminderTime} · ${reminder.repeatRule}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (!reminder.reasonNote.isNullOrBlank()) Text(reminder.reasonNote, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                             }
                         }
-                        Row {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Switch(checked = reminder.enabled, onCheckedChange = { viewModel.toggleReminderEnabled(reminder) })
-                            IconButton(onClick = { viewModel.deleteMedicalReminder(reminder.id) }) { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
+                            IconButton(onClick = { viewModel.deleteMedicalReminder(reminder.id) }) { Icon(Icons.Default.Delete, contentDescription = "Delete reminder", tint = MaterialTheme.colorScheme.error) }
                         }
                     }
                 }
@@ -2270,22 +2446,35 @@ fun MedicineRemindersScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
             title = { Text("New Reminder") },
             text = {
                 Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(value = reminderTitle, onValueChange = { reminderTitle = it }, label = { Text("Medicine / reminder name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = reminderTitle, onValueChange = { reminderTitle = it; reminderError = null }, label = { Text("Medicine / reminder name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                     OutlinedTextField(value = reasonNote, onValueChange = { reasonNote = it }, label = { Text("Reason / notes (optional)") }, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(value = reminderTime, onValueChange = { reminderTime = it }, label = { Text("Time (HH:mm)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    OutlinedTextField(value = reminderTime, onValueChange = { reminderTime = it; reminderError = null }, label = { Text("Time (24h HH:mm, e.g. 08:00)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                     Text("Repeat", fontWeight = FontWeight.Bold)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(listOf("Once", "Daily", "Weekly", "Monthly")) { rule ->
                             FilterChip(selected = repeatRule == rule, onClick = { repeatRule = rule }, label = { Text(rule) })
                         }
                     }
-                    OutlinedTextField(value = startDate, onValueChange = { startDate = it }, label = { Text("Start date (YYYY-MM-DD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = startDate, onValueChange = { startDate = it; reminderError = null }, label = { Text("Start date (YYYY-MM-DD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    if (reminderError != null) {
+                        Text(reminderError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             },
             confirmButton = {
                 Button(onClick = {
-                    if (reminderTitle.isNotBlank()) {
-                        viewModel.addMedicalReminder(reminderTitle, reminderType, reminderTime, repeatRule, startDate, null, null, reasonNote.ifBlank { null })
+                    val trimmedTitle = reminderTitle.trim()
+                    val trimmedTime = reminderTime.trim()
+                    val trimmedDate = startDate.trim()
+                    if (trimmedTitle.isBlank()) {
+                        reminderError = "Enter a reminder name."
+                    } else if (!LunaViewModel.isValidReminderTime(trimmedTime)) {
+                        reminderError = "Enter a valid 24-hour time in HH:mm format (for example 08:00)."
+                    } else if (!CycleUtils.isValidDate(trimmedDate)) {
+                        reminderError = "Enter a real calendar start date in YYYY-MM-DD format."
+                    } else {
+                        reminderError = null
+                        viewModel.addMedicalReminder(trimmedTitle, reminderType, trimmedTime, repeatRule, trimmedDate, null, null, reasonNote.ifBlank { null })
                         showDialog = false
                     }
                 }, enabled = reminderTitle.isNotBlank()) { Text("Save") }
@@ -2299,40 +2488,43 @@ fun MedicineRemindersScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
 // CUP CARE TRACKER
 // ==========================================
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CupCareTrackerScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
     val logs by viewModel.cupCareLogs.collectAsState()
-    var showDialog by remember { mutableStateOf(false) }
-    var cleanedToday by remember { mutableStateOf(false) }
-    var discomfort by remember { mutableStateOf(0f) }
-    var leakage by remember { mutableStateOf(false) }
-    var notes by remember { mutableStateOf("") }
-    var showDiscomfortWarning by remember { mutableStateOf(false) }
+    var showDialog by rememberSaveable { mutableStateOf(false) }
+    var cleanedToday by rememberSaveable { mutableStateOf(false) }
+    var discomfort by rememberSaveable { mutableStateOf(0f) }
+    var leakage by rememberSaveable { mutableStateOf(false) }
+    var notes by rememberSaveable { mutableStateOf("") }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                     Text("Cup Care Tracker", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
                 }
-                Button(onClick = { cleanedToday = false; discomfort = 0f; leakage = false; notes = ""; showDialog = true },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
-                    Icon(Icons.Default.Add, null); Text("Log")
+                Button(
+                    onClick = { cleanedToday = false; discomfort = 0f; leakage = false; notes = ""; showDialog = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null); Spacer(modifier = Modifier.width(4.dp)); Text("Log")
                 }
             }
         }
 
         item {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))) {
                 Column(modifier = Modifier.padding(12.dp)) {
-                    Text("🔑 Daily Cup Reminders", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Text("Daily Cup Care Checklist", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.height(4.dp))
                     listOf("Empty every 8–12 hours", "Rinse with cold water first", "Wash with unscented mild soap", "Clean small holes with soft brush", "Boil between cycles for 5–7 minutes").forEach { tip ->
                         Row(modifier = Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.CheckCircle, null, tint = SuccessGreen, modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(tip, fontSize = 13.sp)
+                            Text(tip, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
@@ -2342,25 +2534,30 @@ fun CupCareTrackerScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
         if (logs.isEmpty()) {
             item {
                 Column(modifier = Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("🌙", fontSize = 48.sp)
+                    Icon(Icons.Default.WaterDrop, null, modifier = Modifier.size(56.dp), tint = MaterialTheme.colorScheme.outline)
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text("No cup logs yet. Track insertion, emptying, cleaning, and comfort.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                    Text("No cup logs yet. Track cleaning, leakage, and comfort.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         } else {
-            items(logs) { log ->
+            items(logs, key = { it.id }) { log ->
+                val decryptedNotes = remember(log.notesEncrypted) { log.notesEncrypted?.let { SecurityUtils.decrypt(it) } }
                 Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
                     containerColor = if (log.discomfortLevel >= 7) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f) else MaterialTheme.colorScheme.surface
                 )) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text(CycleUtils.formatDisplayDate(log.logDate), fontWeight = FontWeight.Bold)
-                            IconButton(onClick = { viewModel.deleteCupCareLog(log.id) }) { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
+                            IconButton(onClick = { viewModel.deleteCupCareLog(log.id) }) { Icon(Icons.Default.Delete, contentDescription = "Delete cup log", tint = MaterialTheme.colorScheme.error) }
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                            MiniChip(if (log.cleanedToday) "✅ Cleaned" else "❌ Not cleaned")
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 8.dp)) {
+                            MiniChip(if (log.cleanedToday) "Cleaned" else "Not cleaned")
                             MiniChip("Discomfort: ${log.discomfortLevel}/10")
-                            if (log.leakageIssue) MiniChip("⚠️ Leakage")
+                            if (log.leakageIssue) MiniChip("Leakage noted")
+                        }
+                        if (!decryptedNotes.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(decryptedNotes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         if (log.discomfortLevel >= 7) {
                             Spacer(modifier = Modifier.height(8.dp))
@@ -2418,15 +2615,20 @@ fun CupCareTrackerScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
 
 @Composable
 fun HealthAwarenessScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
-    var selectedTopic by remember { mutableStateOf<HealthAwarenessTopic?>(null) }
+    var selectedTopicSlug by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedTopic = LunaContent.healthAwarenessTopics.firstOrNull { it.slug == selectedTopicSlug }
+
+    BackHandler(enabled = selectedTopic != null) {
+        selectedTopicSlug = null
+    }
 
     if (selectedTopic != null) {
-        val topic = selectedTopic!!
+        val topic = selectedTopic
         Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { selectedTopic = null }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
-                Text(topic.title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
-                Spacer(modifier = Modifier.width(40.dp))
+                IconButton(onClick = { selectedTopicSlug = null }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+                Text(topic.title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                Spacer(modifier = Modifier.width(48.dp))
             }
             Text("${topic.emoji}  ${topic.summary}", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium))
             Text(topic.content, style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 24.sp))
@@ -2446,14 +2648,14 @@ fun HealthAwarenessScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
             }
             Surface(color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f), shape = RoundedCornerShape(12.dp)) {
                 Column(modifier = Modifier.padding(12.dp)) {
-                    Text("⚠️ When to seek help", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                    Text("When to seek help", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
                     Text(topic.whenToSeekHelp, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
                 }
             }
             HorizontalDivider()
-            Text(topic.disclaimer, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f))
-            Text(LunaContent.REGIONAL_TERMINOLOGY_NOTE, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f))
-            OutlinedButton(onClick = { selectedTopic = null }, modifier = Modifier.fillMaxWidth()) { Text("← Back to Health Awareness") }
+            Text(topic.disclaimer, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(LunaContent.REGIONAL_TERMINOLOGY_NOTE, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedButton(onClick = { selectedTopicSlug = null }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Back to Health Awareness") }
         }
         return
     }
@@ -2464,7 +2666,7 @@ fun HealthAwarenessScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
                 IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                 Column {
                     Text("Health Awareness", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
-                    Text("Educational only — not diagnosis", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                    Text("Educational only — not diagnosis", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -2473,14 +2675,14 @@ fun HealthAwarenessScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
                 Text(LunaContent.REGIONAL_TERMINOLOGY_NOTE, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        items(LunaContent.healthAwarenessTopics) { topic ->
-            Card(modifier = Modifier.fillMaxWidth().clickable { selectedTopic = topic }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        items(LunaContent.healthAwarenessTopics, key = { it.slug }) { topic ->
+            Card(modifier = Modifier.fillMaxWidth().clickable { selectedTopicSlug = topic.slug }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(topic.emoji, fontSize = 32.sp)
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(topic.title, fontWeight = FontWeight.Bold)
-                        Text(topic.summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(topic.summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                     Icon(Icons.Default.ChevronRight, null)
                 }
@@ -2510,123 +2712,86 @@ fun HealthAwarenessScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
 // ==========================================
 
 @OptIn(ExperimentalMaterial3Api::class)
+@Suppress("UNUSED_PARAMETER")
 @Composable
-fun AiAssistantScreen(profile: Profile, viewModel: LunaViewModel, onBack: () -> Unit) {
-    var userInput by remember { mutableStateOf("") }
-    var messages by remember { mutableStateOf(listOf<Pair<Boolean, String>>()) } // isUser, text
-    var showPaywall by remember { mutableStateOf(false) }
-
-    val isLimitReached = viewModel.isAiLimitReached()
-    val remaining = viewModel.getRemainingAiMessages()
-
+fun AiAssistantScreen(
+    profile: Profile,
+    viewModel: LunaViewModel,
+    onBack: () -> Unit,
+    onOpenEmergencyInfo: () -> Unit = {}
+) {
+    // This Android build has no wired, authenticated AI API client. Do not mimic
+    // AI responses, consume quota, or upsell a feature that cannot be purchased.
     Column(modifier = Modifier.fillMaxSize()) {
-        // Top bar
         TopAppBar(
-            title = {
-                Column {
-                    Text("AI Wellness Assistant", fontWeight = FontWeight.Bold)
-                    Text(if (profile.isPremium) "Premium · $remaining messages left" else "Free · $remaining of ${LunaViewModel.FREE_AI_MESSAGES_LIMIT} left",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+            title = { Text("Wellness assistant") },
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                 }
-            },
-            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } }
+            }
         )
-
-        // Disclaimer banner
-        Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+            horizontalAlignment = Alignment.Start
+        ) {
+            Icon(
+                Icons.Default.Psychology,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(48.dp)
+            )
             Text(
-                "Educational only. Not medical advice. No diagnosis. No medication dosage. For emergencies, contact emergency services.",
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.bodySmall,
+                "AI chat is not connected yet",
+                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Text(
+                "This Android build operates offline on your device and does not connect to an authenticated AI service. " +
+                    "Chat is disabled rather than showing simulated replies, transmitting private health data, or using your message allowance.",
+                style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-        }
-
-        // Messages
-        LazyColumn(modifier = Modifier.weight(1f).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (messages.isEmpty()) {
-                item {
-                    Column(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.Psychology, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text("Ask me anything about period care, menstrual cups, mood, or wellness education.", textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("I cannot diagnose, prescribe, or replace medical professionals.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f), textAlign = TextAlign.Center)
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("What you can use now", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
+                    Text(
+                        "Your cycle records, journal, wellbeing check-ins, and educational articles remain available privately on this device.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+            Surface(
+                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.25f),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Need urgent or crisis support?",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Text(
+                        "LunaCare is educational only and cannot provide emergency or clinical care. Contact local emergency services or a crisis helpline right away.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    TextButton(onClick = onOpenEmergencyInfo) {
+                        Text("View emergency & helpline numbers")
                     }
                 }
             }
-            items(messages) { (isUser, text) ->
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start) {
-                    Surface(
-                        color = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(if (isUser) 16.dp else 16.dp),
-                        modifier = Modifier.widthIn(max = 300.dp)
-                    ) {
-                        Text(text, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium,
-                            color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
-
-        // Paywall banner
-        if (isLimitReached && !showPaywall) {
-            Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("You've reached your free AI limit.", fontWeight = FontWeight.Bold)
-                    Text("Upgrade for more wellness questions, journaling support, and learning help.", style = MaterialTheme.typography.bodySmall)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { showPaywall = true }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) { Text("Upgrade") }
-                        TextButton(onClick = {}) { Text("Maybe later") }
-                    }
-                }
-            }
-        }
-
-        // Input row
-        if (!isLimitReached) {
-            Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = userInput, onValueChange = { userInput = it },
-                    placeholder = { Text("Ask a wellness question…") },
-                    modifier = Modifier.weight(1f), singleLine = false, maxLines = 3
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                IconButton(
-                    onClick = {
-                        if (userInput.isNotBlank()) {
-                            val isCrisis = CrisisDetector.detect(userInput)
-                            if (isCrisis) {
-                                messages = messages + (false to "I notice you may be going through something very difficult. Please reach out to emergency services or a crisis line immediately. I care about your safety. LunaCare cannot provide crisis support — please contact a professional.") + (true to userInput)
-                            } else {
-                                messages = messages + (true to userInput)
-                                messages = messages + (false to "I'm here to help with educational wellness questions about periods, menstrual cups, mood, and self-care. I cannot diagnose, prescribe, or replace a doctor. [Note: AI response endpoint not yet connected — set EXPO_PUBLIC_AI_API_ENDPOINT in your environment.]")
-                            }
-                            viewModel.consumeAiMessage()
-                            userInput = ""
-                        }
-                    },
-                    enabled = userInput.isNotBlank()
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, "Send", tint = MaterialTheme.colorScheme.primary)
-                }
-            }
-        }
-    }
-
-    if (showPaywall) {
-        Dialog(onDismissRequest = { showPaywall = false }) {
-            Card(shape = RoundedCornerShape(20.dp)) {
-                Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Stars, null, tint = WarningAmber, modifier = Modifier.size(48.dp))
-                    Text("Upgrade to LunaCare Premium", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), textAlign = TextAlign.Center)
-                    Text("Get more AI wellness messages, unlimited journaling prompts, and priority learning content.", textAlign = TextAlign.Center)
-                    Button(onClick = { showPaywall = false }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
-                        Text("Upgrade — coming soon")
-                    }
-                    TextButton(onClick = { showPaywall = false }) { Text("Maybe later") }
-                }
+            OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                Text("Return to LunaCare")
             }
         }
     }
@@ -2644,15 +2809,15 @@ fun PermissionCenterScreen(profile: Profile, viewModel: LunaViewModel, onBack: (
                 IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                 Column {
                     Text("Permission Center", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
-                    Text("You control what LunaCare can access", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                    Text("Zero hardware permissions are requested in this offline build", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
         val perms = listOf(
-            PermissionInfo(Icons.Default.LocationOn, "Location / GPS", "Used only when you tap 'Find Nearby'.", "Never", "Your device GPS", "Tap 'Find Nearby' → grant in system prompt", "Turn off in Android Settings → Apps → LunaCare → Permissions"),
-            PermissionInfo(Icons.Default.CameraAlt, "Camera", "Used only to attach photo to medical journal.", "Never", "Your camera photos (optional)", "Tap the camera icon in medical journal", "Revoke in Android Settings"),
-            PermissionInfo(Icons.Default.Mic, "Microphone", "Used only for AI voice input (if enabled).", "Never", "Your voice during AI session only", "Tap microphone icon in AI chat", "Revoke in Android Settings"),
-            PermissionInfo(Icons.Default.Notifications, "Notifications", "Used for medicine, mood, period, and cup reminders.", "On-device only", "Notification content you set", "Enable in Reminders settings", "Disable in Android Settings → Notifications")
+            PermissionInfo(Icons.Default.LocationOn, "Location / GPS", "Not requested in this build ('Find Nearby' opens your external Maps app without reading GPS in LunaCare).", "Never", "None (exact coordinates are never stored)", "Not requested", "Choose your preferred privacy mode below"),
+            PermissionInfo(Icons.Default.CameraAlt, "Camera", "Not declared or requested in this build (photo attachments are not yet enabled).", "Never", "None", "Not requested", "No camera permission is granted"),
+            PermissionInfo(Icons.Default.Mic, "Microphone", "Not declared or requested in this build (voice input is not enabled).", "Never", "None", "Not requested", "No microphone permission is granted"),
+            PermissionInfo(Icons.Default.Notifications, "In-App Reminders", "Saved locally in your on-device Reminders & Notifications lists (no background OS push permissions declared).", "On-device only", "Reminder labels you create", "Not requested", "Toggle in Settings → Reminders")
         )
         items(perms) { perm ->
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
@@ -2779,6 +2944,27 @@ fun NotificationPanelScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
 @Composable
 fun BookmarksScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
     val bookmarks by viewModel.bookmarks.collectAsState()
+    val uniqueBookmarks = remember(bookmarks) { bookmarks.distinctBy { it.articleSlug } }
+    var selectedSlug by rememberSaveable { mutableStateOf<String?>(null) }
+
+    BackHandler(enabled = selectedSlug != null) {
+        selectedSlug = null
+    }
+
+    if (selectedSlug != null) {
+        val article = LunaContent.articles.firstOrNull { it.slug == selectedSlug }
+        if (article != null) {
+            ArticleDetailView(
+                article = article,
+                isBookmarked = uniqueBookmarks.any { it.articleSlug == article.slug },
+                onBookmark = { viewModel.toggleBookmark(article.slug) },
+                onBack = { selectedSlug = null }
+            )
+            return
+        } else {
+            selectedSlug = null
+        }
+    }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -2787,7 +2973,7 @@ fun BookmarksScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
                 Text("Bookmarks", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
             }
         }
-        if (bookmarks.isEmpty()) {
+        if (uniqueBookmarks.isEmpty()) {
             item {
                 Column(modifier = Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Outlined.BookmarkBorder, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f))
@@ -2798,14 +2984,33 @@ fun BookmarksScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
                 }
             }
         } else {
-            items(bookmarks) { bm ->
-                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+            items(uniqueBookmarks, key = { it.id }) { bm ->
+                val matchedArticle = LunaContent.articles.firstOrNull { it.slug == bm.articleSlug }
+                val titleText = matchedArticle?.title ?: bm.articleSlug.replace("-", " ").replace("_", " ")
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .let { mod -> if (matchedArticle != null) mod.clickable { selectedSlug = matchedArticle.slug } else mod },
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
                     Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Bookmark, null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text(bm.articleSlug.replace("-", " ").replace("_", " "), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium))
-                        IconButton(onClick = { viewModel.toggleBookmark(bm.articleSlug) }) {
-                            Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(titleText, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium))
+                            if (matchedArticle != null) {
+                                Text(
+                                    matchedArticle.category,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        IconButton(
+                            onClick = { viewModel.toggleBookmark(bm.articleSlug) },
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(Icons.Default.Delete, "Remove bookmark", tint = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
@@ -2823,19 +3028,21 @@ fun UsernameInputField(
     currentUsername: String?,
     onUsernameValidChange: (String?) -> Unit,
     viewModel: LunaViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onCanSubmitChange: (Boolean) -> Unit = {}
 ) {
-    var rawText by remember { mutableStateOf(currentUsername ?: "") }
-    var statusState by remember { mutableStateOf("IDLE") } // IDLE, CHECKING, AVAILABLE, UNAVAILABLE, INVALID, TYPING
+    var rawText by rememberSaveable(currentUsername) { mutableStateOf(currentUsername ?: "") }
+    var statusState by remember { mutableStateOf("IDLE") } // IDLE, CHECKING, LOCAL_FORMAT_VALID, UNAVAILABLE, INVALID, TYPING
     var statusMessage by remember { mutableStateOf("") }
 
-    // Coroutine debounce 400ms for availability check (Req 85)
+    // Coroutine debounce 400ms for local format & reserved-list check (Req 85)
     LaunchedEffect(rawText) {
         val trimmed = rawText.trim().removePrefix("@")
         if (trimmed.isBlank()) {
             statusState = "IDLE"
             statusMessage = ""
-            onUsernameValidChange(null)
+            onUsernameValidChange("")
+            onCanSubmitChange(true)
             return@LaunchedEffect
         }
 
@@ -2850,35 +3057,33 @@ fun UsernameInputField(
                 statusMessage = validation.message
             }
             onUsernameValidChange(null)
+            onCanSubmitChange(false)
             return@LaunchedEffect
         }
 
-        // Show checking state
+        // Check immediately if unchanged from existing username
+        if (currentUsername != null && trimmed.equals(currentUsername.removePrefix("@"), ignoreCase = true)) {
+            statusState = "LOCAL_FORMAT_VALID"
+            statusMessage = "Current username."
+            onUsernameValidChange(trimmed)
+            onCanSubmitChange(true)
+            return@LaunchedEffect
+        }
+
+        // Show checking state while debouncing rapid keystrokes
         statusState = "CHECKING"
-        statusMessage = "Checking username availability..."
+        statusMessage = "Validating username format..."
+        onUsernameValidChange(null)
+        onCanSubmitChange(false)
 
         // Debounce 400ms (Req 85: 300-500 ms)
         kotlinx.coroutines.delay(400)
 
-        // Check if unchanged from existing username
-        if (currentUsername != null && trimmed.equals(currentUsername.removePrefix("@"), ignoreCase = true)) {
-            statusState = "AVAILABLE"
-            statusMessage = "Username is available."
-            onUsernameValidChange(trimmed)
-            return@LaunchedEffect
-        }
-
-        // Check availability against reserved and local rules
-        val reserved = setOf("admin", "lunacare", "support", "official", "security", "api", "root", "system", "help", "settings")
-        if (reserved.contains(validation.normalized)) {
-            statusState = "UNAVAILABLE"
-            statusMessage = "Username is not available."
-            onUsernameValidChange(null)
-        } else {
-            statusState = "AVAILABLE"
-            statusMessage = "Username is available."
-            onUsernameValidChange(trimmed)
-        }
+        // Local offline format & reserved-word validation only (do NOT claim global cloud availability)
+        statusState = "LOCAL_FORMAT_VALID"
+        statusMessage = "Valid local format (global availability requires cloud sync)."
+        onUsernameValidChange(trimmed)
+        onCanSubmitChange(true)
     }
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -2886,7 +3091,19 @@ fun UsernameInputField(
         OutlinedTextField(
             value = rawText,
             onValueChange = { input ->
-                rawText = input.replace(" ", "")
+                val cleaned = input.replace(" ", "")
+                rawText = cleaned
+                val candidate = cleaned.trim().removePrefix("@")
+                if (candidate.isBlank()) {
+                    statusState = "IDLE"
+                    statusMessage = ""
+                    onUsernameValidChange("")
+                    onCanSubmitChange(true)
+                } else {
+                    // Immediately block submission on keystroke before coroutine debounce runs
+                    onUsernameValidChange(null)
+                    onCanSubmitChange(false)
+                }
             },
             prefix = { Text("@", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)) },
             placeholder = { Text("username") },
@@ -2895,8 +3112,8 @@ fun UsernameInputField(
             trailingIcon = {
                 when (statusState) {
                     "CHECKING" -> CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                    "AVAILABLE" -> Icon(Icons.Default.CheckCircle, contentDescription = "Username is available", tint = Color(0xFF2E7D32))
-                    "UNAVAILABLE", "INVALID" -> Icon(Icons.Default.Cancel, contentDescription = "Username unavailable", tint = MaterialTheme.colorScheme.error)
+                    "LOCAL_FORMAT_VALID" -> Icon(Icons.Default.CheckCircle, contentDescription = "Valid local username format", tint = Color(0xFF2E7D32))
+                    "UNAVAILABLE", "INVALID" -> Icon(Icons.Default.Cancel, contentDescription = "Invalid or reserved username", tint = MaterialTheme.colorScheme.error)
                     else -> {}
                 }
             }
@@ -2910,7 +3127,7 @@ fun UsernameInputField(
                 modifier = Modifier.padding(start = 4.dp, top = 2.dp)
             ) {
                 val textColor = when (statusState) {
-                    "AVAILABLE" -> Color(0xFF2E7D32)
+                    "LOCAL_FORMAT_VALID" -> Color(0xFF2E7D32)
                     "UNAVAILABLE", "INVALID" -> MaterialTheme.colorScheme.error
                     "CHECKING" -> MaterialTheme.colorScheme.onSurfaceVariant
                     else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
@@ -2918,7 +3135,7 @@ fun UsernameInputField(
 
                 Text(
                     text = when (statusState) {
-                        "AVAILABLE" -> "✓ $statusMessage"
+                        "LOCAL_FORMAT_VALID" -> "✓ $statusMessage"
                         else -> statusMessage
                     },
                     style = MaterialTheme.typography.bodySmall.copy(color = textColor),
@@ -2935,15 +3152,19 @@ fun UsernameInputField(
 
 @Composable
 fun ProfileEditScreen(profile: Profile, viewModel: LunaViewModel, onBack: () -> Unit) {
-    var displayName by remember { mutableStateOf(profile.displayName) }
-    var selectedUsername by remember { mutableStateOf(profile.username ?: "") }
-    var pronoun by remember { mutableStateOf(profile.pronoun) }
-    var customPronoun by remember { mutableStateOf(profile.customPronoun ?: "") }
-    var genderMode by remember { mutableStateOf(profile.genderMode) }
-    var religion by remember { mutableStateOf(profile.religion) }
-    var country by remember { mutableStateOf(profile.country ?: "") }
-    var region by remember { mutableStateOf(profile.region ?: "") }
-    var city by remember { mutableStateOf(profile.city ?: "") }
+    var displayName by rememberSaveable { mutableStateOf(profile.displayName) }
+    var selectedUsername by rememberSaveable { mutableStateOf<String?>(profile.username ?: "") }
+    var isUsernameSubmittable by rememberSaveable { mutableStateOf(true) }
+    var pronoun by rememberSaveable { mutableStateOf(profile.pronoun) }
+    var customPronoun by rememberSaveable { mutableStateOf(profile.customPronoun ?: "") }
+    var genderMode by rememberSaveable { mutableStateOf(profile.genderMode) }
+    var religion by rememberSaveable { mutableStateOf(profile.religion) }
+    var country by rememberSaveable { mutableStateOf(profile.country ?: "") }
+    var region by rememberSaveable { mutableStateOf(profile.region ?: "") }
+    var city by rememberSaveable { mutableStateOf(profile.city ?: "") }
+
+    val nameTrimmed = displayName.trim()
+    val isNameValid = nameTrimmed.isNotBlank()
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
@@ -2952,31 +3173,48 @@ fun ProfileEditScreen(profile: Profile, viewModel: LunaViewModel, onBack: () -> 
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                     Text("Edit Profile", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
                 }
-                Button(onClick = {
-                    viewModel.updateProfileIdentity(
-                        displayName,
-                        pronoun,
-                        customPronoun.ifBlank { null },
-                        genderMode,
-                        religion,
-                        country.ifBlank { null },
-                        region.ifBlank { null },
-                        city.ifBlank { null },
-                        profile.behaviourFocuses,
-                        selectedUsername.ifBlank { null }
-                    )
-                    onBack()
-                }) { Text("Save") }
+                Button(
+                    enabled = isNameValid && isUsernameSubmittable,
+                    modifier = Modifier.testTag("profile_save_button"),
+                    onClick = {
+                        val clearUsername = selectedUsername == ""
+                        viewModel.updateProfileIdentity(
+                            nameTrimmed,
+                            pronoun,
+                            customPronoun.ifBlank { null },
+                            genderMode,
+                            religion,
+                            country.ifBlank { null },
+                            region.ifBlank { null },
+                            city.ifBlank { null },
+                            profile.behaviourFocuses,
+                            selectedUsername?.ifBlank { null },
+                            clearUsername = clearUsername
+                        )
+                        onBack()
+                    }
+                ) { Text("Save") }
             }
         }
         item {
-            OutlinedTextField(value = displayName, onValueChange = { displayName = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            OutlinedTextField(
+                value = displayName,
+                onValueChange = { displayName = it },
+                label = { Text("Name") },
+                isError = !isNameValid,
+                supportingText = if (!isNameValid) {
+                    { Text("Display name is required.") }
+                } else null,
+                modifier = Modifier.fillMaxWidth().testTag("profile_name_field"),
+                singleLine = true
+            )
         }
         item {
             UsernameInputField(
                 currentUsername = profile.username,
-                onUsernameValidChange = { selectedUsername = it ?: "" },
-                viewModel = viewModel
+                onUsernameValidChange = { selectedUsername = it },
+                viewModel = viewModel,
+                onCanSubmitChange = { isUsernameSubmittable = it }
             )
         }
         item {
@@ -3053,30 +3291,35 @@ fun SupportModeTab(profile: Profile) {
 
 @Composable
 fun SettingsTab(profile: Profile, viewModel: LunaViewModel, onBack: (() -> Unit)?) {
-    var showDeleteConfirmation by remember { mutableStateOf(false) }
-    var cycleLengthStr by remember { mutableStateOf(profile.averageCycleLength.toString()) }
-    var periodLengthStr by remember { mutableStateOf(profile.averagePeriodLength.toString()) }
-    var periodReminders by remember { mutableStateOf(profile.periodReminders) }
-    var moodReminders by remember { mutableStateOf(profile.moodReminders) }
-    var selfCareReminders by remember { mutableStateOf(profile.selfCareReminders) }
+    var showDeleteConfirmation by rememberSaveable { mutableStateOf(false) }
+    var cycleLengthStr by rememberSaveable { mutableStateOf(profile.averageCycleLength.toString()) }
+    var periodLengthStr by rememberSaveable { mutableStateOf(profile.averagePeriodLength.toString()) }
+    var cycleSettingsSavedMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedMode by rememberSaveable(profile.userMode) { mutableStateOf(profile.userMode) }
+    var supportConsentChecked by rememberSaveable(profile.consentConfirmed) { mutableStateOf(profile.consentConfirmed) }
+    var periodReminders by rememberSaveable(profile.periodReminders) { mutableStateOf(profile.periodReminders) }
+    var moodReminders by rememberSaveable(profile.moodReminders) { mutableStateOf(profile.moodReminders) }
+    var cupReminders by rememberSaveable(profile.cupReminders) { mutableStateOf(profile.cupReminders) }
+    var selfCareReminders by rememberSaveable(profile.selfCareReminders) { mutableStateOf(profile.selfCareReminders) }
+    val validCycleSettings = CycleUtils.parseCycleSettings(cycleLengthStr, periodLengthStr)
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             if (onBack != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { onBack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
-                    Text("Settings", style = MaterialTheme.typography.headlineMedium)
+                    Text("Settings", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
                 }
             } else {
-                Text("Settings", style = MaterialTheme.typography.headlineMedium)
+                Text("Settings", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
             }
         }
         item {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text("Dark Mode", fontWeight = FontWeight.Bold)
-                        Text("Toggle deep plum dark theme", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                        Text("Toggle deep plum dark theme", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Switch(checked = profile.isDarkMode, onCheckedChange = { viewModel.toggleDarkMode(it) })
                 }
@@ -3084,21 +3327,90 @@ fun SettingsTab(profile: Profile, viewModel: LunaViewModel, onBack: (() -> Unit)
         }
         item {
             Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("App Mode", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                    val modeOptions = listOf(
+                        UserMode.SELF_TRACKING to "Self Tracking — cycle, mood, and journal",
+                        UserMode.SUPPORT_MODE to "Support Mode — supporting someone with consent",
+                        UserMode.EDUCATION_ONLY to "Education Only — articles and wellness guides"
+                    )
+                    modeOptions.forEach { (modeEnum, label) ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable { selectedMode = modeEnum.name }.padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = selectedMode == modeEnum.name, onClick = { selectedMode = modeEnum.name })
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(label, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    if (selectedMode == UserMode.SUPPORT_MODE.name) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable { supportConsentChecked = !supportConsentChecked }.padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(checked = supportConsentChecked, onCheckedChange = { supportConsentChecked = it })
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "I confirm I have clear permission and will respect privacy.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                    if (selectedMode != profile.userMode) {
+                        Button(
+                            onClick = {
+                                val target = runCatching { UserMode.valueOf(selectedMode) }.getOrDefault(UserMode.EDUCATION_ONLY)
+                                viewModel.updateUserMode(target, consentConfirmed = supportConsentChecked)
+                            },
+                            enabled = selectedMode != UserMode.SUPPORT_MODE.name || supportConsentChecked,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Apply Mode Change") }
+                    }
+                }
+            }
+        }
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Cycle Settings", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                    OutlinedTextField(value = cycleLengthStr, onValueChange = { cycleLengthStr = it }, label = { Text("Avg Cycle Length (days)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    OutlinedTextField(value = periodLengthStr, onValueChange = { periodLengthStr = it }, label = { Text("Avg Period Length (days)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    Button(onClick = { viewModel.updateCycleSettings(cycleLengthStr.toIntOrNull() ?: 28, periodLengthStr.toIntOrNull() ?: 5) }, modifier = Modifier.fillMaxWidth()) { Text("Save Cycle Settings") }
+                    OutlinedTextField(value = cycleLengthStr, onValueChange = { cycleLengthStr = it; cycleSettingsSavedMessage = null }, label = { Text("Avg Cycle Length (days)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = periodLengthStr, onValueChange = { periodLengthStr = it; cycleSettingsSavedMessage = null }, label = { Text("Avg Period Length (days)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    if (validCycleSettings == null) {
+                        Text(
+                            "Enter positive numbers. Period length cannot exceed cycle length (maximum 365 days).",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    } else if (cycleSettingsSavedMessage != null) {
+                        Text(
+                            cycleSettingsSavedMessage!!,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            validCycleSettings?.let { (cycleDays, periodDays) ->
+                                viewModel.updateCycleSettings(cycleDays, periodDays)
+                                cycleSettingsSavedMessage = "Cycle settings saved."
+                            }
+                        },
+                        enabled = validCycleSettings != null,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Save Cycle Settings") }
                 }
             }
         }
         item {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Reminders", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                    SettingSwitch("Period predictions", periodReminders) { periodReminders = it; viewModel.updateNotificationPreferences(it, moodReminders, false, selfCareReminders, "20:00") }
-                    SettingSwitch("Daily wellbeing check-in", moodReminders) { moodReminders = it; viewModel.updateNotificationPreferences(periodReminders, it, false, selfCareReminders, "20:00") }
-                    SettingSwitch("Gentle self-care tips", selfCareReminders) { selfCareReminders = it; viewModel.updateNotificationPreferences(periodReminders, moodReminders, false, it, "20:00") }
+                    Text("Reminder Preferences", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                    Text("Saved locally on this device.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    SettingSwitch("Period estimates", periodReminders) { periodReminders = it; viewModel.updateNotificationPreferences(it, moodReminders, cupReminders, selfCareReminders, profile.reminderTime) }
+                    SettingSwitch("Daily wellbeing check-in", moodReminders) { moodReminders = it; viewModel.updateNotificationPreferences(periodReminders, it, cupReminders, selfCareReminders, profile.reminderTime) }
+                    SettingSwitch("Menstrual cup care", cupReminders) { cupReminders = it; viewModel.updateNotificationPreferences(periodReminders, moodReminders, it, selfCareReminders, profile.reminderTime) }
+                    SettingSwitch("Gentle self-care tips", selfCareReminders) { selfCareReminders = it; viewModel.updateNotificationPreferences(periodReminders, moodReminders, cupReminders, it, profile.reminderTime) }
                 }
             }
         }

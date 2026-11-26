@@ -6,10 +6,15 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
-class LunaViewModel(application: Application) : AndroidViewModel(application) {
+class LunaViewModel @JvmOverloads constructor(
+    application: Application,
+    testDatabase: LunaDatabase? = null
+) : AndroidViewModel(application) {
 
     private val repository: LunaRepository
 
@@ -17,10 +22,94 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         const val FREE_AI_MESSAGES_LIMIT = 20
         const val PREMIUM_AI_MESSAGES_LIMIT = 200
+        const val MIN_CYCLE_LENGTH = 15
+        const val MAX_CYCLE_LENGTH = 60
+        const val MIN_PERIOD_LENGTH = 1
+        const val MAX_PERIOD_LENGTH = 20
+
+        private val REMINDER_TIME_REGEX = Regex("^([01]\\d|2[0-3]):[0-5]\\d$")
+        private val RESERVED_USERNAMES = setOf(
+            "admin", "administrator", "root", "system", "support", "help",
+            "security", "moderator", "staff", "official", "lunacare", "luna_care",
+            "luna", "api", "www", "mail", "account", "accounts", "billing",
+            "privacy", "terms", "legal", "status", "health", "auth", "login",
+            "signup", "register", "settings", "me", "profile", "user", "users",
+            "null", "undefined", "anonymous", "guest", "doctor", "nurse",
+            "compliance", "emergency", "crisis", "internal", "operator", "moderation"
+        )
+        private val IMPERSONATION_PREFIXES = listOf(
+            "lunacare_admin", "lunacare_support", "lunacare_official", "lunacare_team",
+            "lunacare_security", "lunacare_staff", "lunacare_help", "lunacare_system",
+            "official_lunacare", "official_", "admin_", "support_", "security_"
+        )
+
+        fun isValidCycleSettings(cycleLength: Int, periodLength: Int): Boolean {
+            return cycleLength in MIN_CYCLE_LENGTH..MAX_CYCLE_LENGTH &&
+                periodLength in MIN_PERIOD_LENGTH..MAX_PERIOD_LENGTH &&
+                periodLength < cycleLength
+        }
+
+        fun isValidReminderTime(time: String): Boolean = REMINDER_TIME_REGEX.matches(time.trim())
+
+        fun isAiLimitReachedForProfile(
+            profile: Profile?,
+            currentMonth: String = java.time.YearMonth.now().toString()
+        ): Boolean {
+            val p = profile ?: return false
+            val limit = if (p.isPremium) PREMIUM_AI_MESSAGES_LIMIT else FREE_AI_MESSAGES_LIMIT
+            val usedThisMonth = if (p.aiCurrentMonth == currentMonth) p.aiMessagesUsedThisMonth else 0
+            return usedThisMonth >= limit
+        }
+
+        fun getRemainingAiMessagesForProfile(
+            profile: Profile?,
+            currentMonth: String = java.time.YearMonth.now().toString()
+        ): Int {
+            val p = profile ?: return 0
+            val limit = if (p.isPremium) PREMIUM_AI_MESSAGES_LIMIT else FREE_AI_MESSAGES_LIMIT
+            val usedThisMonth = if (p.aiCurrentMonth == currentMonth) p.aiMessagesUsedThisMonth else 0
+            return (limit - usedThisMonth).coerceAtLeast(0)
+        }
+
+        fun validateUsernameRules(raw: String): UsernameValidationResult {
+            var cleaned = raw.trim()
+            if (cleaned.startsWith("@")) cleaned = cleaned.substring(1)
+
+            if (cleaned.length < 3 || cleaned.length > 30) {
+                return UsernameValidationResult(false, message = "Username must contain 3–30 characters.")
+            }
+
+            val allowedRegex = Regex("^[a-zA-Z0-9_.-]+$")
+            if (!allowedRegex.matches(cleaned)) {
+                return UsernameValidationResult(false, message = "Only letters, numbers, periods, hyphens, and underscores are allowed.")
+            }
+
+            if (cleaned.startsWith(".") || cleaned.startsWith("_") || cleaned.startsWith("-")) {
+                return UsernameValidationResult(false, message = "Username cannot start with a period, hyphen, or underscore.")
+            }
+
+            if (cleaned.endsWith(".") || cleaned.endsWith("_") || cleaned.endsWith("-")) {
+                return UsernameValidationResult(false, message = "Username cannot end with a period, hyphen, or underscore.")
+            }
+
+            if (Regex("[-._]{2,}").containsMatchIn(cleaned)) {
+                return UsernameValidationResult(false, message = "Username cannot contain consecutive periods, hyphens, or underscores.")
+            }
+
+            val normalized = java.text.Normalizer.normalize(cleaned, java.text.Normalizer.Form.NFKC).lowercase()
+            if (RESERVED_USERNAMES.contains(normalized) ||
+                IMPERSONATION_PREFIXES.any { normalized.startsWith(it) } ||
+                normalized.endsWith("_official")
+            ) {
+                return UsernameValidationResult(false, message = "Username is not available.")
+            }
+
+            return UsernameValidationResult(true, cleaned = cleaned, normalized = normalized)
+        }
     }
 
     init {
-        val database = LunaDatabase.getDatabase(application)
+        val database = testDatabase ?: LunaDatabase.getDatabase(application)
         repository = LunaRepository(database)
     }
 
@@ -28,8 +117,14 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
     // CORE STATE FLOWS
     // ==============================
 
+    private val _isProfileLoaded = MutableStateFlow(false)
+    val isProfileLoaded: StateFlow<Boolean> = _isProfileLoaded.asStateFlow()
+
+    private val bookmarkMutex = Mutex()
+
     val profile: StateFlow<Profile?> = repository.profile
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+        .onEach { _isProfileLoaded.value = true }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val periodLogs: StateFlow<List<PeriodLog>> = repository.periodLogs
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -177,18 +272,21 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
     private var failedPinAttempts = 0
     private var lockoutEndTime: Long = 0
 
+    fun isPinLockedOut(): Boolean = System.currentTimeMillis() < lockoutEndTime
+
     fun authenticatePin(input: String): Boolean {
         if (System.currentTimeMillis() < lockoutEndTime) {
             logAudit("USER", "login_failed", "pin_auth", "Rate limit active")
             return false
         }
 
-        val currentProfile = profile.value
-        return if (currentProfile != null && currentProfile.securityPinEnabled) {
+        val currentProfile = profile.value ?: return false
+        return if (currentProfile.securityPinEnabled) {
             val matches = SecurityUtils.verifyPin(input, currentProfile.securityPin)
             if (matches) {
                 _isPinAuthenticated.value = true
                 failedPinAttempts = 0
+                lockoutEndTime = 0
                 logAudit(currentProfile.role, "login", "pin_auth", "PIN authenticated")
             } else {
                 failedPinAttempts++
@@ -223,7 +321,10 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
     // PROFILE UPDATES
     // ==============================
 
-    fun updateCycleSettings(cycleLength: Int, periodLength: Int) {
+    fun updateCycleSettings(cycleLength: Int, periodLength: Int): Boolean {
+        if (cycleLength !in 1..365 || periodLength !in 1..cycleLength) {
+            return false
+        }
         viewModelScope.launch {
             val current = repository.getProfileSync() ?: Profile()
             repository.saveProfile(current.copy(
@@ -231,6 +332,24 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
                 averagePeriodLength = periodLength
             ))
         }
+        return true
+    }
+
+    fun updateUserMode(mode: UserMode, consentConfirmed: Boolean = false): Boolean {
+        if (mode == UserMode.SUPPORT_MODE && !consentConfirmed) {
+            return false
+        }
+        viewModelScope.launch {
+            val current = repository.getProfileSync() ?: Profile()
+            repository.saveProfile(
+                current.copy(
+                    userMode = mode.name,
+                    consentConfirmed = if (mode == UserMode.SUPPORT_MODE) true else current.consentConfirmed
+                )
+            )
+            logAudit(current.role, "update", "profile", "User mode changed to ${mode.name}")
+        }
+        return true
     }
 
     // ==============================
@@ -256,37 +375,7 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
     )
 
     fun validateLocalUsername(raw: String): UsernameValidationResult {
-        var cleaned = raw.trim()
-        if (cleaned.startsWith("@")) cleaned = cleaned.substring(1)
-
-        if (cleaned.length < 3 || cleaned.length > 30) {
-            return UsernameValidationResult(false, message = "Username must contain 3–30 characters.")
-        }
-
-        val allowedRegex = Regex("^[a-zA-Z0-9_.-]+$")
-        if (!allowedRegex.matches(cleaned)) {
-            return UsernameValidationResult(false, message = "Only letters, numbers, periods, hyphens, and underscores are allowed.")
-        }
-
-        if (cleaned.startsWith(".") || cleaned.startsWith("_") || cleaned.startsWith("-")) {
-            return UsernameValidationResult(false, message = "Username cannot start with a period, hyphen, or underscore.")
-        }
-
-        if (cleaned.endsWith(".") || cleaned.endsWith("_") || cleaned.endsWith("-")) {
-            return UsernameValidationResult(false, message = "Username cannot end with a period, hyphen, or underscore.")
-        }
-
-        if (Regex("[-._]{2,}").containsMatchIn(cleaned)) {
-            return UsernameValidationResult(false, message = "Username cannot contain consecutive periods, hyphens, or underscores.")
-        }
-
-        val normalized = cleaned.lowercase()
-        val reserved = setOf("admin", "lunacare", "support", "official", "security", "api", "root", "system", "help", "settings")
-        if (reserved.contains(normalized)) {
-            return UsernameValidationResult(false, message = "Username is not available.")
-        }
-
-        return UsernameValidationResult(true, cleaned = cleaned, normalized = normalized)
+        return validateUsernameRules(raw)
     }
 
     fun updateProfileIdentity(
@@ -299,25 +388,39 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
         region: String?,
         city: String?,
         behaviourFocuses: List<String>,
-        username: String? = null
+        username: String? = null,
+        clearUsername: Boolean = false
     ) {
         viewModelScope.launch {
             val current = repository.getProfileSync() ?: Profile()
-            val updatedUsername = username?.trim()?.ifBlank { null } ?: current.username
-            val normalized = updatedUsername?.trim()?.removePrefix("@")?.lowercase()
+            val cleanedName = displayName.trim().ifBlank { current.displayName.ifBlank { "Companion" } }
+            val validatedUsername = username?.trim()?.takeIf { it.isNotBlank() }?.let { candidate ->
+                val result = validateUsernameRules(candidate)
+                if (result.isValid) result else null
+            }
+            val updatedUsername = when {
+                clearUsername -> null
+                validatedUsername != null -> validatedUsername.cleaned
+                else -> current.username
+            }
+            val normalized = when {
+                clearUsername -> null
+                validatedUsername != null -> validatedUsername.normalized
+                else -> current.usernameNormalized
+            }
             val now = LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME)
             repository.saveProfile(current.copy(
-                displayName = displayName,
+                displayName = cleanedName,
                 username = updatedUsername,
                 usernameNormalized = normalized,
                 usernameUpdatedAt = if (updatedUsername != current.username) now else current.usernameUpdatedAt,
                 pronoun = pronoun,
-                customPronoun = customPronoun,
+                customPronoun = customPronoun?.trim()?.ifBlank { null },
                 genderMode = genderMode,
                 religion = religion,
-                country = country,
-                region = region,
-                city = city,
+                country = country?.trim()?.ifBlank { null },
+                region = region?.trim()?.ifBlank { null },
+                city = city?.trim()?.ifBlank { null },
                 behaviourFocuses = behaviourFocuses
             ))
             logAudit(current.role, "update", "profile", "Identity updated")
@@ -378,11 +481,11 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
         notes: String?
     ) {
         viewModelScope.launch {
-            if (!CycleUtils.isValidDate(startDate)) return@launch
+            if (!CycleUtils.isValidDateRange(startDate, endDate)) return@launch
             repository.insertPeriodLog(
                 PeriodLog(
                     startDate = startDate,
-                    endDate = endDate,
+                    endDate = endDate?.ifBlank { null },
                     flowLevel = flowLevel,
                     symptoms = symptoms,
                     notesEncrypted = SecurityUtils.encrypt(notes)
@@ -424,29 +527,36 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
         crisisFlag: Boolean = false
     ) {
         viewModelScope.launch {
+            val safeStress = stressLevel.coerceIn(0, 10)
+            val safeAnxiety = anxietyLevel.coerceIn(0, 10)
+            val safeSleepHours = sleepHours.coerceIn(0f, 24f)
+            val safeSleepQuality = sleepQuality.coerceIn(0, 10)
+            val safePain = painLevel.coerceIn(0, 10)
+            val safeEnergy = energyLevel.coerceIn(0, 10)
+
             val flags = mutableListOf<String>()
             if (crisisFlag) flags.add("CRISIS")
-            if (painLevel >= 8) flags.add("HIGH_PAIN")
-            if (stressLevel >= 8) flags.add("HIGH_STRESS")
-            if (sleepHours < 4f) flags.add("LOW_SLEEP")
+            if (safePain >= 8) flags.add("HIGH_PAIN")
+            if (safeStress >= 8) flags.add("HIGH_STRESS")
+            if (safeSleepHours < 4f) flags.add("LOW_SLEEP")
 
             repository.insertBehaviourLog(
                 BehaviourLog(
                     logDate = CycleUtils.getTodayString(),
                     mood = mood,
-                    stressLevel = stressLevel,
-                    anxietyLevel = anxietyLevel,
-                    sleepHours = sleepHours,
-                    sleepQuality = sleepQuality,
-                    painLevel = painLevel,
-                    energyLevel = energyLevel,
+                    stressLevel = safeStress,
+                    anxietyLevel = safeAnxiety,
+                    sleepHours = safeSleepHours,
+                    sleepQuality = safeSleepQuality,
+                    painLevel = safePain,
+                    energyLevel = safeEnergy,
                     hydrationLevel = hydrationLevel,
                     foodCraving = foodCraving,
                     caffeineIntake = caffeineIntake,
                     movement = movement,
-                    studyWorkPressure = studyWorkPressure,
-                    relationshipStress = relationshipStress,
-                    socialMediaOverload = socialMediaOverload,
+                    studyWorkPressure = studyWorkPressure.coerceIn(0, 10),
+                    relationshipStress = relationshipStress.coerceIn(0, 10),
+                    socialMediaOverload = socialMediaOverload.coerceIn(0, 10),
                     flowLevel = flowLevel,
                     symptoms = symptoms,
                     notesEncrypted = SecurityUtils.encrypt(notes),
@@ -503,18 +613,21 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
         notes: String?
     ) {
         viewModelScope.launch {
+            if (!CycleUtils.isValidDate(entryDate)) return@launch
+            val cleanedNextAppt = nextAppointment?.trim()?.ifBlank { null }
+            if (cleanedNextAppt != null && !CycleUtils.isValidDate(cleanedNextAppt)) return@launch
             repository.insertMedicalJournalEntry(
                 MedicalJournalEntry(
                     entryDate = entryDate,
                     category = category,
-                    title = title,
+                    title = title.trim().ifBlank { "Entry" },
                     symptoms = symptoms,
-                    painLevel = painLevel,
+                    painLevel = painLevel.coerceIn(0, 10),
                     mood = mood,
                     flowLevel = flowLevel,
                     medicinesTaken = medicinesTaken,
                     doctorVisit = doctorVisit,
-                    nextAppointment = nextAppointment,
+                    nextAppointment = cleanedNextAppt,
                     notesEncrypted = SecurityUtils.encrypt(notes),
                     attachmentPath = null
                 )
@@ -530,18 +643,22 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Legacy journal entry
+    // Legacy journal entry (encrypted at rest; fails closed if Keystore encryption fails)
     fun addJournalEntry(title: String, body: String, moodTag: String?, cyclePhase: String?) {
+        val trimmedBody = body.trim()
+        if (trimmedBody.isBlank()) return
         viewModelScope.launch {
+            val encryptedBody = SecurityUtils.encryptJournalBody(trimmedBody) ?: return@launch
             repository.insertJournalEntry(
                 JournalEntry(
                     date = CycleUtils.getTodayString(),
-                    title = title,
-                    body = body,
+                    title = title.trim().ifBlank { "Reflections" },
+                    body = encryptedBody,
                     moodTag = moodTag,
                     cyclePhase = cyclePhase
                 )
             )
+            logAudit("USER", "insert", "journal_entries", null)
         }
     }
 
@@ -564,14 +681,17 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
         reasonNote: String?
     ) {
         viewModelScope.launch {
+            if (title.isBlank()) return@launch
+            if (!CycleUtils.isValidDateRange(startDate, endDate)) return@launch
+            if (!isValidReminderTime(reminderTime)) return@launch
             repository.insertMedicalReminder(
                 MedicalReminder(
-                    title = title,
+                    title = title.trim(),
                     reminderType = reminderType,
-                    reminderTime = reminderTime,
+                    reminderTime = reminderTime.trim(),
                     repeatRule = repeatRule,
                     startDate = startDate,
-                    endDate = endDate,
+                    endDate = endDate?.ifBlank { null },
                     enabled = true,
                     notesEncrypted = SecurityUtils.encrypt(notes),
                     reasonNote = reasonNote
@@ -662,12 +782,14 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleBookmark(slug: String) {
         viewModelScope.launch {
-            val list = bookmarks.value
-            val exists = list.any { it.articleSlug == slug }
-            if (exists) {
-                repository.removeBookmark(slug)
-            } else {
-                repository.addBookmark(slug)
+            bookmarkMutex.withLock {
+                val list = repository.bookmarks.first()
+                val exists = list.any { it.articleSlug == slug }
+                if (exists) {
+                    repository.removeBookmark(slug)
+                } else {
+                    repository.addBookmark(slug)
+                }
             }
         }
     }
@@ -676,17 +798,9 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
     // AI TOKEN MANAGEMENT
     // ==============================
 
-    fun isAiLimitReached(): Boolean {
-        val p = profile.value ?: return false
-        val limit = if (p.isPremium) PREMIUM_AI_MESSAGES_LIMIT else FREE_AI_MESSAGES_LIMIT
-        return p.aiMessagesUsedThisMonth >= limit
-    }
+    fun isAiLimitReached(): Boolean = isAiLimitReachedForProfile(profile.value)
 
-    fun getRemainingAiMessages(): Int {
-        val p = profile.value ?: return 0
-        val limit = if (p.isPremium) PREMIUM_AI_MESSAGES_LIMIT else FREE_AI_MESSAGES_LIMIT
-        return (limit - p.aiMessagesUsedThisMonth).coerceAtLeast(0)
-    }
+    fun getRemainingAiMessages(): Int = getRemainingAiMessagesForProfile(profile.value)
 
     fun consumeAiMessage() {
         viewModelScope.launch {
@@ -751,6 +865,8 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             logAudit("USER", "delete", "all_data", "User requested data deletion")
             repository.clearAllData()
+            failedPinAttempts = 0
+            lockoutEndTime = 0
             _isPinAuthenticated.value = false
             _isGuestUser.value = false
             _tempLat.value = null
