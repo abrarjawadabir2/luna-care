@@ -116,9 +116,18 @@ export class AiService {
       }
     }
 
-    // Fallback if API key is not configured or request fails
+    // No simulated AI answers: a missing key, failed provider request or empty
+    // provider answer must not consume a user's monthly message allowance.
     if (!replyText) {
-      replyText = `Thank you for your wellness question about ${topic}. Remember that LunaCare is educational only and cannot replace a doctor. For specific medical concerns, please consult a healthcare professional.`;
+      await AuditService.recordEvent({
+        eventType: 'ai.request.rejected',
+        userId,
+        resourceType: 'ai_chat',
+        result: 'failure',
+        reasonCode: 'AI_SERVICE_UNAVAILABLE',
+        metadata: { topic }
+      });
+      throw new Error('AI_SERVICE_UNAVAILABLE');
     }
 
     // Treat model output as untrusted: sanitize against HTML/script injection

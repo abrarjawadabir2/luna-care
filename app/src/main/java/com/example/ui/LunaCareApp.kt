@@ -2510,123 +2510,63 @@ fun HealthAwarenessScreen(viewModel: LunaViewModel, onBack: () -> Unit) {
 // ==========================================
 
 @OptIn(ExperimentalMaterial3Api::class)
+@Suppress("UNUSED_PARAMETER")
 @Composable
 fun AiAssistantScreen(profile: Profile, viewModel: LunaViewModel, onBack: () -> Unit) {
-    var userInput by remember { mutableStateOf("") }
-    var messages by remember { mutableStateOf(listOf<Pair<Boolean, String>>()) } // isUser, text
-    var showPaywall by remember { mutableStateOf(false) }
-
-    val isLimitReached = viewModel.isAiLimitReached()
-    val remaining = viewModel.getRemainingAiMessages()
-
+    // This Android build has no wired, authenticated AI API client. Do not mimic
+    // AI responses, consume quota, or upsell a feature that cannot be purchased.
     Column(modifier = Modifier.fillMaxSize()) {
-        // Top bar
         TopAppBar(
-            title = {
-                Column {
-                    Text("AI Wellness Assistant", fontWeight = FontWeight.Bold)
-                    Text(if (profile.isPremium) "Premium · $remaining messages left" else "Free · $remaining of ${LunaViewModel.FREE_AI_MESSAGES_LIMIT} left",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+            title = { Text("Wellness assistant") },
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                 }
-            },
-            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } }
+            }
         )
-
-        // Disclaimer banner
-        Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+            horizontalAlignment = Alignment.Start
+        ) {
+            Icon(
+                Icons.Default.Psychology,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(48.dp)
+            )
             Text(
-                "Educational only. Not medical advice. No diagnosis. No medication dosage. For emergencies, contact emergency services.",
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                "AI chat is not connected yet",
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Text(
+                "This Android build does not connect to a verified AI service. " +
+                    "Chat is disabled rather than showing a placeholder answer or using your message allowance.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("What you can use now", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Your cycle records, journal, mood tracking, and educational articles " +
+                            "remain available without an AI connection.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+            Text(
+                "LunaCare is educational only and does not diagnose conditions or replace a healthcare professional.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-        }
-
-        // Messages
-        LazyColumn(modifier = Modifier.weight(1f).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (messages.isEmpty()) {
-                item {
-                    Column(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.Psychology, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text("Ask me anything about period care, menstrual cups, mood, or wellness education.", textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("I cannot diagnose, prescribe, or replace medical professionals.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f), textAlign = TextAlign.Center)
-                    }
-                }
-            }
-            items(messages) { (isUser, text) ->
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start) {
-                    Surface(
-                        color = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(if (isUser) 16.dp else 16.dp),
-                        modifier = Modifier.widthIn(max = 300.dp)
-                    ) {
-                        Text(text, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium,
-                            color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
-
-        // Paywall banner
-        if (isLimitReached && !showPaywall) {
-            Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("You've reached your free AI limit.", fontWeight = FontWeight.Bold)
-                    Text("Upgrade for more wellness questions, journaling support, and learning help.", style = MaterialTheme.typography.bodySmall)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { showPaywall = true }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) { Text("Upgrade") }
-                        TextButton(onClick = {}) { Text("Maybe later") }
-                    }
-                }
-            }
-        }
-
-        // Input row
-        if (!isLimitReached) {
-            Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = userInput, onValueChange = { userInput = it },
-                    placeholder = { Text("Ask a wellness question…") },
-                    modifier = Modifier.weight(1f), singleLine = false, maxLines = 3
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                IconButton(
-                    onClick = {
-                        if (userInput.isNotBlank()) {
-                            val isCrisis = CrisisDetector.detect(userInput)
-                            if (isCrisis) {
-                                messages = messages + (false to "I notice you may be going through something very difficult. Please reach out to emergency services or a crisis line immediately. I care about your safety. LunaCare cannot provide crisis support — please contact a professional.") + (true to userInput)
-                            } else {
-                                messages = messages + (true to userInput)
-                                messages = messages + (false to "I'm here to help with educational wellness questions about periods, menstrual cups, mood, and self-care. I cannot diagnose, prescribe, or replace a doctor. [Note: AI response endpoint not yet connected — set EXPO_PUBLIC_AI_API_ENDPOINT in your environment.]")
-                            }
-                            viewModel.consumeAiMessage()
-                            userInput = ""
-                        }
-                    },
-                    enabled = userInput.isNotBlank()
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, "Send", tint = MaterialTheme.colorScheme.primary)
-                }
-            }
-        }
-    }
-
-    if (showPaywall) {
-        Dialog(onDismissRequest = { showPaywall = false }) {
-            Card(shape = RoundedCornerShape(20.dp)) {
-                Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Stars, null, tint = WarningAmber, modifier = Modifier.size(48.dp))
-                    Text("Upgrade to LunaCare Premium", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), textAlign = TextAlign.Center)
-                    Text("Get more AI wellness messages, unlimited journaling prompts, and priority learning content.", textAlign = TextAlign.Center)
-                    Button(onClick = { showPaywall = false }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
-                        Text("Upgrade — coming soon")
-                    }
-                    TextButton(onClick = { showPaywall = false }) { Text("Maybe later") }
-                }
+            OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                Text("Return to LunaCare")
             }
         }
     }
@@ -2823,7 +2763,8 @@ fun UsernameInputField(
     currentUsername: String?,
     onUsernameValidChange: (String?) -> Unit,
     viewModel: LunaViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onInputValidityChange: (Boolean) -> Unit = {}
 ) {
     var rawText by remember { mutableStateOf(currentUsername ?: "") }
     var statusState by remember { mutableStateOf("IDLE") } // IDLE, CHECKING, AVAILABLE, UNAVAILABLE, INVALID, TYPING
@@ -2836,6 +2777,7 @@ fun UsernameInputField(
             statusState = "IDLE"
             statusMessage = ""
             onUsernameValidChange(null)
+            onInputValidityChange(true)
             return@LaunchedEffect
         }
 
@@ -2850,6 +2792,7 @@ fun UsernameInputField(
                 statusMessage = validation.message
             }
             onUsernameValidChange(null)
+            onInputValidityChange(false)
             return@LaunchedEffect
         }
 
@@ -2862,9 +2805,10 @@ fun UsernameInputField(
 
         // Check if unchanged from existing username
         if (currentUsername != null && trimmed.equals(currentUsername.removePrefix("@"), ignoreCase = true)) {
-            statusState = "AVAILABLE"
-            statusMessage = "Username is available."
+            statusState = "CURRENT"
+            statusMessage = "Current local username. Global availability is not verified."
             onUsernameValidChange(trimmed)
+            onInputValidityChange(true)
             return@LaunchedEffect
         }
 
@@ -2874,10 +2818,12 @@ fun UsernameInputField(
             statusState = "UNAVAILABLE"
             statusMessage = "Username is not available."
             onUsernameValidChange(null)
+            onInputValidityChange(false)
         } else {
-            statusState = "AVAILABLE"
-            statusMessage = "Username is available."
+            statusState = "LOCAL_FORMAT_VALID"
+            statusMessage = "Format valid. This username is not reserved across accounts."
             onUsernameValidChange(trimmed)
+            onInputValidityChange(true)
         }
     }
 
@@ -2887,6 +2833,10 @@ fun UsernameInputField(
             value = rawText,
             onValueChange = { input ->
                 rawText = input.replace(" ", "")
+                // Invalidate the last accepted username immediately, not after
+                // the debounce. A fast tap on Save must not reuse stale input.
+                onUsernameValidChange(null)
+                onInputValidityChange(false)
             },
             prefix = { Text("@", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)) },
             placeholder = { Text("username") },
@@ -2895,7 +2845,7 @@ fun UsernameInputField(
             trailingIcon = {
                 when (statusState) {
                     "CHECKING" -> CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                    "AVAILABLE" -> Icon(Icons.Default.CheckCircle, contentDescription = "Username is available", tint = Color(0xFF2E7D32))
+                    "CURRENT", "LOCAL_FORMAT_VALID" -> Icon(Icons.Default.Info, contentDescription = "Username format checked locally", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     "UNAVAILABLE", "INVALID" -> Icon(Icons.Default.Cancel, contentDescription = "Username unavailable", tint = MaterialTheme.colorScheme.error)
                     else -> {}
                 }
@@ -2910,17 +2860,14 @@ fun UsernameInputField(
                 modifier = Modifier.padding(start = 4.dp, top = 2.dp)
             ) {
                 val textColor = when (statusState) {
-                    "AVAILABLE" -> Color(0xFF2E7D32)
+                    "CURRENT", "LOCAL_FORMAT_VALID" -> MaterialTheme.colorScheme.onSurfaceVariant
                     "UNAVAILABLE", "INVALID" -> MaterialTheme.colorScheme.error
                     "CHECKING" -> MaterialTheme.colorScheme.onSurfaceVariant
                     else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                 }
 
                 Text(
-                    text = when (statusState) {
-                        "AVAILABLE" -> "✓ $statusMessage"
-                        else -> statusMessage
-                    },
+                    text = statusMessage,
                     style = MaterialTheme.typography.bodySmall.copy(color = textColor),
                     modifier = Modifier.testTag("username_status_text")
                 )
@@ -2937,6 +2884,7 @@ fun UsernameInputField(
 fun ProfileEditScreen(profile: Profile, viewModel: LunaViewModel, onBack: () -> Unit) {
     var displayName by remember { mutableStateOf(profile.displayName) }
     var selectedUsername by remember { mutableStateOf(profile.username ?: "") }
+    var usernameInputValid by remember { mutableStateOf(true) }
     var pronoun by remember { mutableStateOf(profile.pronoun) }
     var customPronoun by remember { mutableStateOf(profile.customPronoun ?: "") }
     var genderMode by remember { mutableStateOf(profile.genderMode) }
@@ -2966,7 +2914,7 @@ fun ProfileEditScreen(profile: Profile, viewModel: LunaViewModel, onBack: () -> 
                         selectedUsername.ifBlank { null }
                     )
                     onBack()
-                }) { Text("Save") }
+                }, enabled = displayName.isNotBlank() && usernameInputValid) { Text("Save") }
             }
         }
         item {
@@ -2976,7 +2924,13 @@ fun ProfileEditScreen(profile: Profile, viewModel: LunaViewModel, onBack: () -> 
             UsernameInputField(
                 currentUsername = profile.username,
                 onUsernameValidChange = { selectedUsername = it ?: "" },
-                viewModel = viewModel
+                viewModel = viewModel,
+                onInputValidityChange = { usernameInputValid = it }
+            )
+            Text(
+                "Offline profile name only. Reserving a unique username requires a connected account service.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         item {
@@ -3059,6 +3013,7 @@ fun SettingsTab(profile: Profile, viewModel: LunaViewModel, onBack: (() -> Unit)
     var periodReminders by remember { mutableStateOf(profile.periodReminders) }
     var moodReminders by remember { mutableStateOf(profile.moodReminders) }
     var selfCareReminders by remember { mutableStateOf(profile.selfCareReminders) }
+    val validCycleSettings = CycleUtils.parseCycleSettings(cycleLengthStr, periodLengthStr)
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
@@ -3088,7 +3043,22 @@ fun SettingsTab(profile: Profile, viewModel: LunaViewModel, onBack: (() -> Unit)
                     Text("Cycle Settings", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                     OutlinedTextField(value = cycleLengthStr, onValueChange = { cycleLengthStr = it }, label = { Text("Avg Cycle Length (days)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth(), singleLine = true)
                     OutlinedTextField(value = periodLengthStr, onValueChange = { periodLengthStr = it }, label = { Text("Avg Period Length (days)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    Button(onClick = { viewModel.updateCycleSettings(cycleLengthStr.toIntOrNull() ?: 28, periodLengthStr.toIntOrNull() ?: 5) }, modifier = Modifier.fillMaxWidth()) { Text("Save Cycle Settings") }
+                    if (validCycleSettings == null) {
+                        Text(
+                            "Enter positive numbers. Period length cannot exceed cycle length (maximum 365 days).",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            validCycleSettings?.let { (cycleDays, periodDays) ->
+                                viewModel.updateCycleSettings(cycleDays, periodDays)
+                            }
+                        },
+                        enabled = validCycleSettings != null,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Save Cycle Settings") }
                 }
             }
         }
