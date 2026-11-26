@@ -380,5 +380,40 @@ class MarkItDownSecurityAndConversionTests(unittest.TestCase):
         self.assertIn("Offline conversion content", ok.markdown)
 
 
+    def test_17_output_cli_refuses_overwrite(self) -> None:
+        """A conversion must never destroy an existing Markdown document."""
+        from contextlib import redirect_stderr
+        input_path = self.root / "input.docx"
+        input_path.write_bytes(_build_synthetic_docx(["Local only sample"]))
+        output_path = self.root / "important.md"
+        output_path.write_text("DO NOT OVERWRITE", encoding="utf-8")
+        stderr = io.StringIO()
+        with redirect_stderr(stderr):
+            status = cd.main([
+                "--input", str(input_path),
+                "--allowed-root", str(self.root),
+                "--output", str(output_path),
+            ])
+        self.assertEqual(status, 1)
+        self.assertIn("OUTPUT_EXISTS", stderr.getvalue())
+        self.assertEqual(output_path.read_text(encoding="utf-8"), "DO NOT OVERWRITE")
+
+    def test_18_output_cli_requires_markdown_extension(self) -> None:
+        from contextlib import redirect_stderr
+        input_path = self.root / "input.docx"
+        input_path.write_bytes(_build_synthetic_docx(["Local document"]))
+        output_path = self.root / "invalid.txt"
+        stderr = io.StringIO()
+        with redirect_stderr(stderr):
+            status = cd.main([
+                "--input", str(input_path),
+                "--allowed-root", str(self.root),
+                "--output", str(output_path),
+            ])
+        self.assertEqual(status, 1)
+        self.assertIn("INVALID_OUTPUT", stderr.getvalue())
+        self.assertFalse(output_path.exists())
+
+
 if __name__ == "__main__":
     unittest.main()
