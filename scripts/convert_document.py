@@ -742,10 +742,31 @@ def main(argv: list[str] | None = None) -> int:
         if not out_path.is_relative_to(root_resolved):
             print("ERROR [UNSAFE_PATH]: Output path must stay within --allowed-root.", file=sys.stderr)
             return 1
+        if out_path.suffix.lower() != ".md":
+            print("ERROR [INVALID_OUTPUT]: Output must be a Markdown .md file.", file=sys.stderr)
+            return 1
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(out_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(result.markdown)
+        # Never clobber an existing file, even if the caller accidentally picks
+        # a tracked document, a local note, or the input path. O_EXCL also
+        # rejects pre-existing symlinks.
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            fd = os.open(out_path, flags, 0o600)
+        except FileExistsError:
+            print("ERROR [OUTPUT_EXISTS]: Refusing to overwrite an existing file.", file=sys.stderr)
+            return 1
+        except OSError:
+            print("ERROR [OUTPUT_WRITE_FAILED]: Could not create output file.", file=sys.stderr)
+            return 1
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(result.markdown)
+        except OSError:
+            out_path.unlink(missing_ok=True)
+            print("ERROR [OUTPUT_WRITE_FAILED]: Could not finish writing output.", file=sys.stderr)
+            return 1
 
     if args.json_meta:
         meta = {
