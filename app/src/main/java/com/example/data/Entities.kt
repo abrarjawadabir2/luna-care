@@ -1,6 +1,7 @@
 package com.example.data
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 // ==========================================
@@ -27,7 +28,10 @@ enum class UserRole { USER, PREMIUM_USER, MODERATOR, MEDICAL_CONTENT_REVIEWER, S
 // PROFILE ENTITY
 // ==========================================
 
-@Entity(tableName = "profile")
+@Entity(
+    tableName = "profile",
+    indices = [Index(value = ["usernameNormalized"], unique = true)]
+)
 data class Profile(
     @PrimaryKey val id: Int = 1,
     val displayName: String = "",

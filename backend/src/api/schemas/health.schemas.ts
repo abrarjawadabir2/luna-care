@@ -1,10 +1,9 @@
 import { z } from 'zod';
-
-const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+import { isValidCalendarDate } from '../../utils/date.js';
 
 export const createBehaviourLogSchema = z.object({
-  logDate: z.string().regex(dateRegex, 'logDate must be YYYY-MM-DD'),
-  mood: z.string().min(1).max(50),
+  logDate: z.string().refine(isValidCalendarDate, 'logDate must be a valid calendar date in YYYY-MM-DD format'),
+  mood: z.string().trim().min(1).max(50),
   stressLevel: z.number().int().min(0).max(10),
   anxietyLevel: z.number().int().min(0).max(10),
   sleepHours: z.number().min(0).max(24),

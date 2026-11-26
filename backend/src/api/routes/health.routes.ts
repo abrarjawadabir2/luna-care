@@ -15,4 +15,7 @@ export const healthRoutes: FastifyPluginAsync = async (fastify) => {
 
   // POST /api/v1/health/behaviour (authenticated alias)
   fastify.post('/behaviour', { preHandler: requireAuth }, HealthController.createBehaviourLog);
+
+  // DELETE /api/v1/health/behaviour/:id (authenticated alias)
+  fastify.delete<{ Params: { id: string } }>('/behaviour/:id', { preHandler: requireAuth }, HealthController.deleteBehaviourLog);
 };

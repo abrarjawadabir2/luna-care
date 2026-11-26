@@ -1,26 +1,14 @@
-# Set default behavior to automatically normalize line endings
-* text=auto eol=lf
-
-# Source code and scripts
-*.kt text diff=kotlin
-*.kts text diff=kotlin
-*.java text diff=java
-*.xml text
-*.json text
-*.md text
-*.properties text
-*.pro text
-*.gradle text
-*.yml text
-*.yaml text
-*.sh text eol=lf
-*.bat text eol=crlf
-
-# Binary files
-*.png binary
+# Protect binary assets from text/EOL conversion
 *.webp binary
+*.png binary
 *.jpg binary
 *.jpeg binary
-*.keystore binary
+*.gif binary
+*.ico binary
 *.jar binary
-*.so binary
+*.jks binary
+*.keystore binary
+*.pdf binary
+*.docx binary
+*.pptx binary
+*.xlsx binary

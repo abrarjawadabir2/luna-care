@@ -27,18 +27,25 @@ export class UploadService {
   static inspectMagicBytes(buffer: Buffer): { valid: boolean; mime: string } {
     if (buffer.length < 4) return { valid: false, mime: 'unknown' };
 
-    // PNG: 89 50 4E 47 0D 0A 1A 0A
-    if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
+    // PNG: full 8-byte signature 89 50 4E 47 0D 0A 1A 0A
+    if (
+      buffer.length >= 8 &&
+      buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47 &&
+      buffer[4] === 0x0D && buffer[5] === 0x0A && buffer[6] === 0x1A && buffer[7] === 0x0A
+    ) {
       return { valid: true, mime: 'image/png' };
     }
 
-    // JPEG: FF D8 FF
-    if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) {
+    // JPEG: FF D8 FF (require at least 4 bytes including marker byte)
+    if (buffer.length >= 4 && buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF && buffer[3] !== 0x00) {
       return { valid: true, mime: 'image/jpeg' };
     }
 
-    // PDF: %PDF (25 50 44 46)
-    if (buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) {
+    // PDF: %PDF- (25 50 44 46 2D)
+    if (
+      buffer.length >= 5 &&
+      buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46 && buffer[4] === 0x2D
+    ) {
       return { valid: true, mime: 'application/pdf' };
     }
 
@@ -60,8 +67,32 @@ export class UploadService {
     base64Data: string;
     userId: string;
   }): Promise<InspectionResult> {
-    // 1. Decode base64 buffer safely
-    const buffer = Buffer.from(input.base64Data, 'base64');
+    // 1. Validate strict base64 syntax before decoding
+    const compactBase64 = input.base64Data.replace(/\s+/g, '');
+    if (
+      compactBase64.length === 0 ||
+      compactBase64.length % 4 !== 0 ||
+      !/^[A-Za-z0-9+/]+={0,2}$/.test(compactBase64)
+    ) {
+      await AuditService.recordEvent({
+        eventType: 'file.upload.rejected',
+        userId: input.userId,
+        resourceType: 'upload',
+        result: 'failure',
+        reasonCode: 'INVALID_BASE64_PAYLOAD',
+        metadata: { claimed: input.claimedContentType }
+      });
+
+      return {
+        valid: false,
+        detectedMime: 'unknown',
+        sizeBytes: 0,
+        safeKey: '',
+        error: 'Malformed base64 file payload.'
+      };
+    }
+
+    const buffer = Buffer.from(compactBase64, 'base64');
     const sizeBytes = buffer.length;
 
     // 2. Enforce file size limit

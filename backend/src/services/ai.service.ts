@@ -26,7 +26,15 @@ export class AiService {
   }
 
   static async processChat(userId: string, isPremium: boolean, message: string, topic: string) {
-    // 1. Crisis intervention check
+    const env = getEnv();
+    const currentMonth = new Date().toISOString().substring(0, 7);
+    const limit = isPremium ? env.AI_PREMIUM_TIER_LIMIT : env.AI_FREE_TIER_LIMIT;
+    const existingProfile = db.getProfile(userId);
+    const existingUsed = existingProfile && existingProfile.aiCurrentMonth === currentMonth
+      ? existingProfile.aiMessagesUsedThisMonth
+      : 0;
+
+    // 1. Crisis intervention check (always takes priority; never charges quota)
     if (this.isCrisis(message)) {
       logger.warn('ai.crisis_detected', { userId, topic });
       await AuditService.recordEvent({
@@ -40,13 +48,12 @@ export class AiService {
       return {
         reply: 'I notice you may be going through something very difficult. Please reach out to emergency services or a crisis line immediately. Your life and safety matter deeply. LunaCare cannot provide crisis support — please contact a professional immediately (e.g., dial 988 or your local emergency line).',
         isCrisis: true,
-        remainingMessages: 0
+        remainingMessages: Math.max(0, limit - existingUsed)
       };
     }
 
     // 2. Server-side quota validation
-    const profile = db.getProfile(userId);
-    if (!profile) {
+    if (!existingProfile) {
       await AuditService.recordEvent({
         eventType: 'ai.request.rejected',
         userId,
@@ -58,76 +65,87 @@ export class AiService {
       throw new Error('PROFILE_NOT_FOUND');
     }
 
-    const env = getEnv();
-    const currentMonth = new Date().toISOString().substring(0, 7);
-    const usedThisMonth = profile.aiCurrentMonth === currentMonth ? profile.aiMessagesUsedThisMonth : 0;
-    const limit = isPremium ? env.AI_PREMIUM_TIER_LIMIT : env.AI_FREE_TIER_LIMIT;
-
-    if (usedThisMonth >= limit) {
+    if (existingUsed >= limit) {
       await AuditService.recordEvent({
         eventType: 'ai.request.rejected',
         userId,
         resourceType: 'ai_chat',
         result: 'denied',
         reasonCode: 'AI_QUOTA_EXCEEDED',
-        metadata: { topic, usedThisMonth, limit }
+        metadata: { topic, usedThisMonth: existingUsed, limit }
       });
       throw new Error('AI_QUOTA_EXCEEDED');
     }
 
     // 3. Data minimization & prompt defense
-    // Do NOT include exact GPS, complete medical journals, or credentials
-    let replyText = '';
-    const apiKey = env.GEMINI_API_KEY;
-
-    if (apiKey && !apiKey.includes('placeholder')) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s outbound timeout
-
-        const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-          signal: controller.signal,
-          body: JSON.stringify({
-            contents: [
-              {
-                role: 'user',
-                parts: [{ text: `${SYSTEM_INSTRUCTION}\n\nUser Question [Topic: ${topic}]:\n${message}` }]
-              }
-            ],
-            generationConfig: {
-              maxOutputTokens: 500,
-              temperature: 0.7
-            }
-          })
-        });
-
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-          const result = await response.json() as {
-            candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-          };
-          replyText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-        }
-      } catch (err) {
-        logger.error('ai.gemini_request_failed', { reason: 'PROVIDER_REQUEST_FAILED' });
-      }
+    // Read live environment variable so runtime configuration and tests stay accurate.
+    const apiKey = process.env['GEMINI_API_KEY'];
+    if (!apiKey || apiKey.includes('placeholder')) {
+      await AuditService.recordEvent({
+        eventType: 'ai.request.rejected',
+        userId,
+        resourceType: 'ai_chat',
+        result: 'failure',
+        reasonCode: 'AI_SERVICE_UNAVAILABLE',
+        metadata: { topic }
+      });
+      throw new Error('AI_SERVICE_UNAVAILABLE');
     }
 
-    // Fallback if API key is not configured or request fails
+    let replyText = '';
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s outbound timeout
+    try {
+      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: `${SYSTEM_INSTRUCTION}\n\nUser Question [Topic: ${topic}]:\n${message}` }]
+            }
+          ],
+          generationConfig: {
+            maxOutputTokens: 500,
+            temperature: 0.7
+          }
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json() as {
+          candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+        };
+        replyText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+      }
+    } catch {
+      logger.error('ai.gemini_request_failed', { reason: 'PROVIDER_REQUEST_FAILED' });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    // Fail honestly if provider fails — never fabricate an AI response or charge quota
     if (!replyText) {
-      replyText = `Thank you for your wellness question about ${topic}. Remember that LunaCare is educational only and cannot replace a doctor. For specific medical concerns, please consult a healthcare professional.`;
+      await AuditService.recordEvent({
+        eventType: 'ai.request.rejected',
+        userId,
+        resourceType: 'ai_chat',
+        result: 'failure',
+        reasonCode: 'AI_SERVICE_UNAVAILABLE',
+        metadata: { topic }
+      });
+      throw new Error('AI_SERVICE_UNAVAILABLE');
     }
 
     // Treat model output as untrusted: sanitize against HTML/script injection
     const { safeText } = sanitizeAiOutput(replyText);
 
     // 4. Update usage quota atomically
-    const newUsed = usedThisMonth + 1;
+    const newUsed = existingUsed + 1;
     db.saveProfile({
-      ...profile,
+      ...existingProfile,
       aiMessagesUsedThisMonth: newUsed,
       aiCurrentMonth: currentMonth
     });

@@ -37,6 +37,9 @@ export class AuditService {
       action: input.eventType,
       resourceType: input.resourceType || 'system',
       resourceId: input.resourceId,
+      requestId: input.requestId,
+      result: input.result,
+      reasonCode: input.reasonCode,
       metadata: safeMetadata,
       createdAt: timestamp.toISOString()
     });
@@ -70,9 +73,11 @@ export class AuditService {
       id: r.id,
       eventType: r.action,
       userId: r.actorId,
+      requestId: r.requestId,
       resourceType: r.resourceType,
       resourceId: r.resourceId,
-      result: 'success',
+      result: r.result ?? 'success',
+      reasonCode: r.reasonCode,
       timestamp: new Date(r.createdAt),
       metadata: r.metadata
     }));

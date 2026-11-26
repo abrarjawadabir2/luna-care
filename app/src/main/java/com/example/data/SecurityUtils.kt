@@ -39,6 +39,7 @@ object SecurityUtils {
     private const val PIN_PBKDF2_ITERATIONS = 120_000
     private const val PIN_SALT_BYTES = 16
     private const val PIN_KEY_BITS = 256
+    private const val JOURNAL_ENC_PREFIX = "ENC_V1:"
 
     /**
      * Hashes a string (e.g. IP address or user-agent) using SHA-256.
@@ -113,28 +114,41 @@ object SecurityUtils {
         }
     }
 
+    @Volatile
+    internal var allowJvmTestKeyFallback: Boolean = false
+
+    private val jvmTestKey: SecretKey by lazy {
+        val kg = KeyGenerator.getInstance(ALGORITHM)
+        kg.init(256)
+        kg.generateKey()
+    }
+
     private fun getOrCreateSecretKey(): SecretKey {
-        val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER)
-        keyStore.load(null)
+        return try {
+            val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER)
+            keyStore.load(null)
 
-        if (keyStore.containsAlias(KEY_ALIAS)) {
-            val entry = keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry
-            if (entry != null) return entry.secretKey
-        }
+            if (keyStore.containsAlias(KEY_ALIAS)) {
+                val entry = keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry
+                if (entry != null) return entry.secretKey
+            }
 
-        val keyGenerator = KeyGenerator.getInstance(ALGORITHM, KEYSTORE_PROVIDER)
-        keyGenerator.init(
-            KeyGenParameterSpec.Builder(
-                KEY_ALIAS,
-                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+            val keyGenerator = KeyGenerator.getInstance(ALGORITHM, KEYSTORE_PROVIDER)
+            keyGenerator.init(
+                KeyGenParameterSpec.Builder(
+                    KEY_ALIAS,
+                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+                )
+                    .setBlockModes(BLOCK_MODE)
+                    .setEncryptionPaddings(PADDING)
+                    .setKeySize(256)
+                    .setUserAuthenticationRequired(false) // PIN is handled at app level
+                    .build()
             )
-                .setBlockModes(BLOCK_MODE)
-                .setEncryptionPaddings(PADDING)
-                .setKeySize(256)
-                .setUserAuthenticationRequired(false) // PIN is handled at app level
-                .build()
-        )
-        return keyGenerator.generateKey()
+            keyGenerator.generateKey()
+        } catch (e: Exception) {
+            if (allowJvmTestKeyFallback) jvmTestKey else throw e
+        }
     }
 
     /**
@@ -163,9 +177,10 @@ object SecurityUtils {
      * NEVER log the result.
      */
     fun decrypt(encrypted: String?): String? {
-        if (encrypted == null) return null
+        if (encrypted.isNullOrEmpty()) return null
         return try {
             val combined = Base64.decode(encrypted, Base64.NO_WRAP)
+            if (combined.size <= GCM_IV_LENGTH) return null
             val iv = combined.sliceArray(0 until GCM_IV_LENGTH)
             val ciphertext = combined.sliceArray(GCM_IV_LENGTH until combined.size)
 
@@ -178,6 +193,26 @@ object SecurityUtils {
             null
         }
     }
+
+    /**
+     * Encrypts journal body text with AES-256-GCM, prefixing ciphertext with ENC_V1:.
+     * Fails closed (returns null) if encryption fails rather than persisting plaintext.
+     */
+    fun encryptJournalBody(plaintext: String): String? {
+        val encrypted = encrypt(plaintext) ?: return null
+        return "$JOURNAL_ENC_PREFIX$encrypted"
+    }
+
+    /**
+     * Decrypts an ENC_V1:-prefixed journal body or returns legacy plaintext unchanged.
+     */
+    fun decryptJournalBody(stored: String): String {
+        return if (stored.startsWith(JOURNAL_ENC_PREFIX)) {
+            decrypt(stored.removePrefix(JOURNAL_ENC_PREFIX)) ?: ""
+        } else {
+            stored
+        }
+    }
 }
 
 /**
@@ -187,7 +222,7 @@ object SecurityUtils {
  */
 object CrisisDetector {
     private val CRISIS_KEYWORDS = listOf(
-        "suicide", "suicidal", "kill myself", "kill myself",
+        "suicide", "suicidal", "kill myself",
         "hurt myself", "self harm", "self-harm", "selfharm",
         "don't want to live", "dont want to live",
         "end my life", "end it all",

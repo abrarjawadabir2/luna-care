@@ -23,10 +23,9 @@ export class LocationController {
     const cat = NEARBY_CATEGORIES.find(c => c.id === data.category) || { query: data.category };
 
     let fullQuery = cat.query;
-    if (data.city) {
-      fullQuery += ` in ${data.city}`;
-    } else if (data.country) {
-      fullQuery += ` in ${data.country}`;
+    const locationParts = [data.city?.trim(), data.country?.trim()].filter((part): part is string => Boolean(part));
+    if (locationParts.length > 0) {
+      fullQuery += ` in ${locationParts.join(', ')}`;
     }
 
     const encoded = encodeURIComponent(fullQuery);
