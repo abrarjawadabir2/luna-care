@@ -44,7 +44,9 @@ class TestCloudflareInfraSecurity(unittest.TestCase):
         rl_file = (TF_DIR / "rate_limiting.tf").read_text(encoding="utf-8")
         self.assertIn("/api/v1/auth/login", rl_file)
         self.assertIn("/api/v1/ai/chat", rl_file)
-        self.assertIn('action      = "managed_challenge"', rl_file)
+        self.assertIn('action      = "block"', rl_file)
+        self.assertNotIn('action      = "managed_challenge"', rl_file)
+        self.assertIn('enabled     = false', rl_file, "Unverified edge limits should not interrupt native app users")
 
     def test_tunnel_ingress_rules(self):
         """Cloudflare Tunnel must map api hostname to local backend port 3000."""
@@ -86,6 +88,28 @@ class TestCloudflareInfraSecurity(unittest.TestCase):
         sitemap_file = (WEB_DIR / "sitemap.xml").read_text(encoding="utf-8")
         self.assertIn("https://lunacare.example/", sitemap_file)
         self.assertIn("<urlset", sitemap_file)
+
+    def test_cache_expression_uses_real_zone_host_and_valid_function_syntax(self):
+        cache = (TF_DIR / "cache_rules.tf").read_text(encoding="utf-8")
+        self.assertIn("api.${var.domain}", cache)
+        self.assertIn('http.host eq \\"', cache)
+        self.assertIn("starts_with(http.request.uri.path", cache)
+        self.assertNotIn("http.host eq var.domain", cache)
+        self.assertNotIn("http.request.uri.path starts_with", cache)
+        self.assertNotIn('\\", \\"', cache, "Cloudflare rules language uses space-separated set members")
+
+    def test_waf_uses_supported_ruleset_functions(self):
+        waf = (TF_DIR / "waf_rules.tf").read_text(encoding="utf-8")
+        self.assertNotIn("http.request.uri.path starts_with", waf)
+        self.assertIn("starts_with(http.request.uri.path", waf)
+        self.assertNotIn('\\", \\"', waf)
+
+    def test_public_deployment_requires_approval_and_verified_api_origin(self):
+        gate = (TF_DIR / "deployment_readiness.tf").read_text(encoding="utf-8")
+        self.assertIn("var.deployment_authorized && var.api_origin_verified", gate)
+        variables = (TF_DIR / "variables.tf").read_text(encoding="utf-8")
+        self.assertIn('variable "deployment_authorized"', variables)
+        self.assertIn('variable "api_origin_verified"', variables)
 
 if __name__ == "__main__":
     unittest.main()

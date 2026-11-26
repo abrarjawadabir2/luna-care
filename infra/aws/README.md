@@ -11,10 +11,11 @@
 LunaCare is a privacy-first menstrual wellness and reproductive health application. The backend API handles sensitive authentication data, user profiles, and proxied health data interactions.
 
 ### Production Deployment Blockers (Must be resolved before live AWS launch):
-1. **In-Memory Backend Storage:** The Node.js Fastify backend (`backend/src/database/client.ts`) uses an `InMemoryDatabase`. Production startup is blocked by `requirePersistentDatabaseForProduction()` in `backend/src/app.ts`. A persistent PostgreSQL adapter wiring TLS (`sslmode=verify-full`) and running migrations `20261001000000_hardened_schema.sql` and `20261023000000_unique_username_system.sql` must be completed and tested.
-2. **Object Storage Persistence:** `UploadService.inspectAndStore` validates magic bytes and MIME types, but stores upload metadata only (`db.uploads`). Byte persistence to an encrypted private S3 bucket with KMS encryption and presigned URLs must be wired.
-3. **External OTP & Reset Delivery:** Phone OTP and password-reset currently return `deliveryImplemented: false`. An enterprise SMS (e.g. AWS SNS / Twilio) or transactional email (AWS SES) provider must be configured.
-4. **Distributed Abuse Controls:** Rate limiting and job locking use process-memory maps. Multi-instance scaling requires Redis or PostgreSQL advisory locks.
+1. **In-Memory Backend Storage:** The Node.js Fastify backend (`backend/src/database/client.ts`) uses an `InMemoryDatabase`. Production startup is blocked by `requirePersistentDatabaseForProduction()` in `backend/src/app.ts` and `deployment_readiness_gate` in `infra/aws/terraform/deployment_readiness.tf`. A persistent PostgreSQL adapter wiring TLS (`sslmode=verify-full`) and running migrations `20261001000000_hardened_schema.sql` and `20261023000000_unique_username_system.sql` must be completed and tested.
+2. **EC2 Runtime Bootstrap & Private-Subnet Egress:** `ec2_asg.tf` defines the `lunacare.service` unit in private subnets (`associate_public_ip_address = false`), but does not yet provision a pinned Node.js 20 build artifact or VPC Interface Endpoints (`ssm`, `ssmmessages`, `ec2messages`, `secretsmanager`, `logs`) / NAT egress required for package updates and SSM Session Manager. Keep `backend_runtime_verified = false` until wired.
+3. **Object Storage Persistence:** `UploadService.inspectAndStore` validates magic bytes and MIME types, but stores upload metadata only (`db.uploads`). Byte persistence to an encrypted private S3 bucket with KMS encryption and presigned URLs must be wired.
+4. **External OTP & Reset Delivery:** Phone OTP and password-reset currently return `deliveryImplemented: false`. An enterprise SMS (e.g. AWS SNS / Twilio) or transactional email (AWS SES) provider must be configured.
+5. **Distributed Abuse Controls:** Rate limiting and job locking use process-memory maps. Multi-instance scaling requires Redis or PostgreSQL advisory locks.
 
 ---
 
@@ -64,21 +65,21 @@ LunaCare is a privacy-first menstrual wellness and reproductive health applicati
 
 ---
 
-## 4. Realistic Cost Estimates (Monthly Projection, Region: us-east-1)
+## 4. Verified Cost Estimates (Monthly 730-hr Projection, Region: `us-east-1`)
 
-| Service Component | Configuration Details | Estimated Monthly Cost (USD) | Free Tier Eligible? |
+| Service Component | Configuration & Official On-Demand Rate (`us-east-1`) | Estimated Monthly Cost (USD) | Notes |
 |---|---|---|---|
-| **EC2 Compute** | 1x `t4g.small` (2 vCPU, 2GB RAM, Graviton2) | $12.26 | Yes (t4g.small free trial for 750 hrs where active) |
-| **EBS Storage** | 30 GB gp3 root volume | $2.40 | Yes (30 GB free for 12 months) |
-| **Application Load Balancer** | 1x ALB across 2 AZs + 1 LCU | $18.50 | **No** (ALB is billable immediately) |
-| **Public IPv4 Allocation** | 2 public IPs on ALB ($0.005/hr) | $7.30 | **No** (New AWS IPv4 fee since Feb 2024) |
-| **RDS PostgreSQL** | 1x `db.t4g.micro` (Single-AZ dev/initial) | $12.41 | Yes (`db.t3.micro` 750 hrs free for 12 months) |
-| **RDS gp3 Storage** | 20 GB gp3 storage | $2.30 | Yes (20 GB storage free for 12 months) |
-| **AWS Secrets Manager** | 1 secret (environment variables) | $0.40 | **No** (30-day trial only) |
-| **CloudWatch Logs** | 2 GB ingestion + 30-day storage | $1.10 | Yes (First 5 GB free) |
-| **VPC Endpoints (SSM/Logs)** | Interface endpoints (replaces NAT Gateway) | $7.20 | **No** (Saves ~$33/mo vs NAT Gateway) |
-| **AWS Budget Alert** | 1 monthly budget ($30/mo threshold) | $0.00 | Yes (First 2 budgets free) |
-| **Total Estimated Cost** | **Minimal Hardened Production** | **~$63.87 / month** | **~$28.00 / month with 1-yr Free Tier** |
+| **EC2 Compute** | 1x `t4g.small` (2 vCPU, 2 GiB RAM, Graviton2 @ \$0.0168/hr) | \$12.26 | Lower with 1-yr Compute Savings Plan |
+| **EBS Root Storage** | 30 GB `gp3` (3,000 IOPS, 125 MB/s @ \$0.08/GB-mo) | \$2.40 | Encrypted at rest |
+| **RDS PostgreSQL** | 1x `db.t4g.micro` Single-AZ (@ \$0.016/hr; Multi-AZ is \$0.032/hr = \$23.36) | \$11.68 | Use Multi-AZ (~\$23.36/mo) for production HA |
+| **RDS Storage** | 20 GB `gp3` (@ \$0.115/GB-mo) | \$2.30 | KMS-encrypted |
+| **AWS Secrets Manager** | 2 secrets (`lunacare_config` + RDS managed password @ \$0.40/secret-mo) | \$0.80 | Plus \$0.05 per 10,000 API calls |
+| **CloudWatch Logs** | ~2 GB ingestion (\$0.50/GB) + 30-day retention (\$0.03/GB-mo) | \$1.06 | First 5 GB/mo covered under AWS Free Tier |
+| **Ingress Option A: ALB + Public IPv4** | 1x ALB (\$0.0225/hr = \$16.43 + ~\$2.00 LCU) + 2 public IPv4s (\$0.005/IP-hr = \$7.30) | \$25.73 | Optional if NOT using Cloudflare Tunnel (`infra/cloudflare`) |
+| **Ingress Option B: Cloudflare Tunnel** | `cloudflared` outbound daemon + Cloudflare Free/Pro plan + Cloudflare Pages (`web/`) | \$0.00 (Free tier) | Eliminates ALB + public IPv4 (\$25.73/mo saved) |
+| **Private Egress (Required for Private Subnet)** | Single-AZ NAT Gateway (\$0.045/hr = \$32.85 + \$0.045/GB) *or* 5 VPC Interface Endpoints (`ssm`, `ssmmessages`, `ec2messages`, `secretsmanager`, `logs` @ \$0.01/AZ-hr = \$7.30/endpoint/AZ) | \$32.85–\$36.50 | Single-AZ NAT Gateway (\$32.85/mo) is cheaper than 5 endpoints across 2 AZs (\$73.00/mo) |
+| **AWS Budget Alert** | 1 monthly cost budget (`budgets.tf`) | \$0.00 | Free |
+| **Total Estimated Cost** | **Cloudflare Tunnel + Single-AZ NAT + Single-AZ RDS** | **~\$63.35 / month** | **~\$89.08 / month if adding ALB instead of Tunnel** |
 
 > **Cost Alert Guardrail:** An AWS Budget alert is pre-configured in Terraform (`budgets.tf`) to trigger email notifications at 80% ($24.00) and 100% ($30.00) of the monthly threshold.
 
