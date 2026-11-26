@@ -23,7 +23,8 @@
     "run_arbitrary_code",
     "dump_environment",
     "export_database",
-    "reveal_secrets"
+    "reveal_secrets",
+    "markitdown_convert_remote_uri"
   ],
   "enforcement": {
     "readOnlyByDefault": true,

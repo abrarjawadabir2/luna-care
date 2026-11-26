@@ -23,6 +23,7 @@ describe('MCP Configuration & Policy Integrity Tests', () => {
     assert.equal(policy.defaultAction, 'deny');
     assert.ok(policy.deniedTools.includes('execute_shell'));
     assert.ok(policy.deniedTools.includes('query_any_sql'));
+    assert.ok(policy.deniedTools.includes('markitdown_convert_remote_uri'));
   });
 
   test('3. Network allowlist enforces privacy and bans 0.0.0.0', () => {
@@ -36,5 +37,8 @@ describe('MCP Configuration & Policy Integrity Tests', () => {
     assert.ok(fs.existsSync(filesystemPolicyPath));
     const policy = JSON.parse(fs.readFileSync(filesystemPolicyPath, 'utf8'));
     assert.equal(policy.flags.allowUnrestrictedFileAccess, false);
+    assert.ok(policy.filesystemBounds.prohibitedPaths.includes('.env'));
+    assert.ok(policy.filesystemBounds.prohibitedPaths.includes('*.jks'));
+    assert.ok(policy.filesystemBounds.prohibitedPaths.includes('docs-private'));
   });
 });
