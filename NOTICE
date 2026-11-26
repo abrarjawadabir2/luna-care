@@ -11,3 +11,11 @@ You may obtain a copy of the License at:
 Third-party libraries, frameworks, fonts, icons, images, APIs, and other dependencies remain subject to their respective licenses and terms. The Apache License 2.0 for LunaCare does not replace or override those third-party licenses.
 
 The LunaCare name, branding, logo, and other project identity elements are not automatically licensed for trademark use by the Apache License 2.0.
+
+---
+
+Optional Local Developer Tooling Attribution:
+LunaCare's optional local document-conversion CLI (`scripts/convert_document.py`)
+integrates Microsoft MarkItDown (https://github.com/microsoft/markitdown),
+Copyright (c) Microsoft Corporation, licensed under the MIT License.
+MarkItDown is not bundled into the Android application or production backend runtime.
