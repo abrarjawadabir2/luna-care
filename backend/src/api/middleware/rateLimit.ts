@@ -8,6 +8,7 @@ interface RateLimitBucket {
 }
 
 export class MemoryRateLimiter {
+  private static readonly MAX_BUCKETS = 10_000;
   private buckets = new Map<string, RateLimitBucket>();
 
   /**
@@ -19,6 +20,13 @@ export class MemoryRateLimiter {
     let bucket = this.buckets.get(key);
 
     if (!bucket || bucket.resetAt <= now) {
+      if (this.buckets.size >= MemoryRateLimiter.MAX_BUCKETS) {
+        this.cleanupExpired();
+        if (this.buckets.size >= MemoryRateLimiter.MAX_BUCKETS) {
+          const oldestKey = this.buckets.keys().next().value;
+          if (oldestKey !== undefined) this.buckets.delete(oldestKey);
+        }
+      }
       bucket = { count: 1, resetAt: now + windowMs };
       this.buckets.set(key, bucket);
       return { allowed: true, remaining: maxLimit - 1, resetInSec: Math.ceil(windowMs / 1000) };

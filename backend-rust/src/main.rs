@@ -78,9 +78,14 @@ impl FileInspector {
             });
         }
 
-        // 2. JPEG: FF D8 FF
+        // 2. JPEG: FF D8 FF (must contain valid structure and at least 12 bytes)
         if data.starts_with(&[0xFF, 0xD8, 0xFF]) {
-            let (w, h) = Self::parse_jpeg_dimensions(data).unwrap_or((0, 0));
+            if data.len() < 12 || data[3] == 0x00 {
+                return Err(InspectionError::CorruptedHeader(
+                    "JPEG payload truncated or malformed marker".to_string(),
+                ));
+            }
+            let (w, h) = Self::parse_jpeg_dimensions(data)?;
             return Ok(InspectionReport {
                 valid: true,
                 detected_mime: "image/jpeg".to_string(),
@@ -92,8 +97,13 @@ impl FileInspector {
             });
         }
 
-        // 3. PDF: %PDF- (25 50 44 46)
+        // 3. PDF: %PDF-X.Y (25 50 44 46 2D followed by ASCII version digit)
         if data.starts_with(b"%PDF-") {
+            if data.len() < 8 || !data[5].is_ascii_digit() {
+                return Err(InspectionError::CorruptedHeader(
+                    "PDF header missing valid version".to_string(),
+                ));
+            }
             return Ok(InspectionReport {
                 valid: true,
                 detected_mime: "application/pdf".to_string(),
@@ -105,8 +115,24 @@ impl FileInspector {
             });
         }
 
-        // 4. WEBP: RIFF....WEBP
+        // 4. WEBP: RIFF<4-byte non-zero size>WEBP<4-byte chunk FourCC>
         if data.len() >= 12 && data.starts_with(b"RIFF") && &data[8..12] == b"WEBP" {
+            if data.len() < 16 {
+                return Err(InspectionError::CorruptedHeader(
+                    "WebP header too short".to_string(),
+                ));
+            }
+            let riff_size = u32::from_le_bytes([data[4], data[5], data[6], data[7]]);
+            let chunk = &data[12..16];
+            let valid_chunk = matches!(
+                chunk,
+                b"VP8 " | b"VP8L" | b"VP8X" | b"ANIM" | b"ICCP" | b"EXIF" | b"XMP "
+            );
+            if riff_size < 4 || !valid_chunk {
+                return Err(InspectionError::CorruptedHeader(
+                    "WebP RIFF chunk is malformed".to_string(),
+                ));
+            }
             return Ok(InspectionReport {
                 valid: true,
                 detected_mime: "image/webp".to_string(),
@@ -122,35 +148,69 @@ impl FileInspector {
     }
 
     fn parse_png_dimensions(data: &[u8]) -> Result<(u32, u32), InspectionError> {
-        // IHDR chunk starts at byte 12 (length: 4, type "IHDR": 4, data at 16..24)
+        // IHDR chunk starts at byte 8 (length: 13 at 8..12, type "IHDR": 12..16, width/height: 16..24)
         if data.len() < 24 {
             return Err(InspectionError::CorruptedHeader(
                 "PNG header too short".to_string(),
             ));
         }
+        let ihdr_len = u32::from_be_bytes([data[8], data[9], data[10], data[11]]);
+        if ihdr_len != 13 || &data[12..16] != b"IHDR" {
+            return Err(InspectionError::CorruptedHeader(
+                "PNG missing valid IHDR chunk".to_string(),
+            ));
+        }
         let width = u32::from_be_bytes([data[16], data[17], data[18], data[19]]);
         let height = u32::from_be_bytes([data[20], data[21], data[22], data[23]]);
+        if width == 0 || height == 0 || width > 65_535 || height > 65_535 {
+            return Err(InspectionError::CorruptedHeader(
+                "PNG dimensions out of safe bounds".to_string(),
+            ));
+        }
         Ok((width, height))
     }
 
     fn parse_jpeg_dimensions(data: &[u8]) -> Result<(u32, u32), InspectionError> {
         let mut idx = 2;
-        while idx + 4 < data.len() {
+        while idx + 1 < data.len() {
             if data[idx] != 0xFF {
                 break;
             }
+            // Skip consecutive 0xFF fill bytes per JPEG spec
+            while idx + 1 < data.len() && data[idx + 1] == 0xFF {
+                idx += 1;
+            }
+            if idx + 1 >= data.len() {
+                break;
+            }
             let marker = data[idx + 1];
+            // Standalone markers without length payload (TEM, SOI, EOI, RST0..RST7)
+            if marker == 0x01 || marker == 0xD8 || marker == 0xD9 || (0xD0..=0xD7).contains(&marker)
+            {
+                idx += 2;
+                continue;
+            }
+            if idx + 4 > data.len() {
+                break;
+            }
+            let length = u16::from_be_bytes([data[idx + 2], data[idx + 3]]) as usize;
+            if length < 2 {
+                return Err(InspectionError::CorruptedHeader(
+                    "Invalid JPEG segment length".to_string(),
+                ));
+            }
             // SOF0 (0xC0), SOF1 (0xC1), SOF2 (0xC2)
-            if (marker == 0xC0 || marker == 0xC1 || marker == 0xC2) && idx + 9 <= data.len() {
+            if marker == 0xC0 || marker == 0xC1 || marker == 0xC2 {
+                if length < 7 || idx + 9 > data.len() {
+                    return Err(InspectionError::CorruptedHeader(
+                        "Truncated JPEG SOF segment".to_string(),
+                    ));
+                }
                 let height = u16::from_be_bytes([data[idx + 5], data[idx + 6]]) as u32;
                 let width = u16::from_be_bytes([data[idx + 7], data[idx + 8]]) as u32;
                 return Ok((width, height));
             }
-            let length = u16::from_be_bytes([data[idx + 2], data[idx + 3]]) as usize;
-            if length < 2 {
-                break;
-            }
-            idx += 2 + length;
+            idx = idx.saturating_add(2 + length);
         }
         Ok((0, 0))
     }
@@ -243,5 +303,69 @@ mod tests {
         let big = vec![0u8; 100];
         let err = FileInspector::inspect(&big, Some(50));
         assert!(matches!(err, Err(InspectionError::FileTooLarge(50))));
+    }
+
+    #[test]
+    fn test_100x_user_upload_edge_cases_and_malformed_headers() {
+        for i in 1u32..=100 {
+            // 1. Valid PNG with dynamic dimensions
+            let mut png = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+            png.extend_from_slice(&[0x00, 0x00, 0x00, 0x0D]);
+            png.extend_from_slice(b"IHDR");
+            png.extend_from_slice(&(i * 10).to_be_bytes());
+            png.extend_from_slice(&(i * 12).to_be_bytes());
+            png.extend_from_slice(&[0x08, 0x06, 0x00, 0x00, 0x00]);
+            let report = FileInspector::inspect(&png, None).expect("Valid PNG must succeed");
+            assert_eq!(report.width, Some(i * 10));
+            assert_eq!(report.height, Some(i * 12));
+
+            // 2. Corrupt PNG missing IHDR tag at bytes 12..16 must be rejected
+            let mut bad_ihdr = png.clone();
+            bad_ihdr[12..16].copy_from_slice(b"FAKE");
+            assert!(
+                FileInspector::inspect(&bad_ihdr, None).is_err(),
+                "Iteration {i}: PNG without IHDR chunk must fail"
+            );
+
+            // 3. Zero-dimension PNG must be rejected
+            let mut zero_png = png.clone();
+            zero_png[16..20].copy_from_slice(&0u32.to_be_bytes());
+            assert!(
+                FileInspector::inspect(&zero_png, None).is_err(),
+                "Iteration {i}: zero-width PNG must fail"
+            );
+
+            // 4. Truncated 4-byte JPEG spoof must be rejected
+            let tiny_jpeg = vec![0xFF, 0xD8, 0xFF, 0x00];
+            assert!(
+                FileInspector::inspect(&tiny_jpeg, None).is_err(),
+                "Iteration {i}: 4-byte truncated JPEG must fail"
+            );
+
+            // 5. Valid JPEG with 0xFF fill bytes before SOF0 must parse dimensions accurately
+            let w = (100 + i) as u16;
+            let h = (200 + i) as u16;
+            let mut jpeg = vec![0xFF, 0xD8, 0xFF, 0xFF, 0xC0, 0x00, 0x0B, 0x08];
+            jpeg.extend_from_slice(&h.to_be_bytes());
+            jpeg.extend_from_slice(&w.to_be_bytes());
+            jpeg.extend_from_slice(&[0x01, 0x01, 0x11, 0x00, 0xFF, 0xD9]);
+            let jrep = FileInspector::inspect(&jpeg, None).expect("Valid JPEG must succeed");
+            assert_eq!(jrep.width, Some(w as u32));
+            assert_eq!(jrep.height, Some(h as u32));
+
+            // 6. Malformed PDF with non-digit version must fail
+            let bad_pdf = b"%PDF-NOPE";
+            assert!(
+                FileInspector::inspect(bad_pdf, None).is_err(),
+                "Iteration {i}: malformed PDF version must fail"
+            );
+
+            // 7. Truncated 12-byte WebP with zero RIFF body must fail
+            let bad_webp = b"RIFF\x00\x00\x00\x00WEBP";
+            assert!(
+                FileInspector::inspect(bad_webp, None).is_err(),
+                "Iteration {i}: truncated 12-byte WebP must fail"
+            );
+        }
     }
 }

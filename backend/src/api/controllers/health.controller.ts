@@ -16,6 +16,12 @@ export class HealthController {
     const input = createBehaviourLogSchema.parse(request.body);
     const now = new Date().toISOString();
 
+    const flags: string[] = [];
+    if (input.crisisFlag) flags.push('CRISIS');
+    if (input.painLevel >= 8) flags.push('HIGH_PAIN');
+    if (input.stressLevel >= 8) flags.push('HIGH_STRESS');
+    if (input.sleepHours < 4) flags.push('LOW_SLEEP');
+
     const record = db.createBehaviourLog({
       id: crypto.randomUUID(),
       userId,
@@ -32,7 +38,7 @@ export class HealthController {
       symptoms: input.symptoms,
       notesEncrypted: input.notesEncrypted || undefined,
       crisisFlag: input.crisisFlag,
-      flags: [],
+      flags,
       createdAt: now,
       updatedAt: now
     });

@@ -131,6 +131,9 @@ export interface AuditRecord {
   action: string;
   resourceType: string;
   resourceId?: string;
+  requestId?: string;
+  result?: 'success' | 'failure' | 'denied';
+  reasonCode?: string;
   ipHash?: string;
   userAgentHash?: string;
   metadata: Record<string, unknown>;

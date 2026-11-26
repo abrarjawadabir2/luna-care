@@ -4,8 +4,8 @@ import { isSafeUrl } from '../../security/index.js';
 // Explicit allowlist of writable profile fields.
 // FORBIDDEN / STRIPPED: role, isPremium, aiMessagesUsedThisMonth, id, createdAt, updatedAt
 export const updateProfileSchema = z.object({
-  displayName: z.string().min(1).max(100).optional(),
-  username: z.string().min(3).max(30).optional(),
+  displayName: z.string().trim().min(1, 'displayName cannot be blank').max(100).optional(),
+  username: z.string().trim().min(3).max(31).optional(),
   avatar: z
     .string()
     .max(500)
@@ -31,13 +31,18 @@ export const updateProfileSchema = z.object({
   behaviourFocuses: z.array(z.string().max(100)).max(30).optional(),
   averageCycleLength: z.number().int().min(15).max(60).optional(),
   averagePeriodLength: z.number().int().min(1).max(20).optional()
-}).strict(); // Any other fields (like role, id, userId, isAdmin, isStaff, subscriptionStatus, emailVerified, createdAt, audit fields) are strictly REJECTED
+}).strict().refine(
+  (data) =>
+    data.averageCycleLength === undefined ||
+    data.averagePeriodLength === undefined ||
+    data.averagePeriodLength < data.averageCycleLength,
+  { message: 'averagePeriodLength must be shorter than averageCycleLength', path: ['averagePeriodLength'] }
+);
 
 export const claimUsernameSchema = z.object({
-  username: z.string().min(1).max(50)
+  username: z.string().trim().min(1).max(50)
 }).strict();
 
 export const usernameAvailabilityQuerySchema = z.object({
-  username: z.string().min(1).max(50)
+  username: z.string().trim().min(1).max(50)
 });
-

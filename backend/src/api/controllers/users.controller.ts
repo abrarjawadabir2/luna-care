@@ -17,6 +17,10 @@ export class UsersController {
       });
     }
 
+    const currentMonth = new Date().toISOString().substring(0, 7);
+    const aiMessagesUsedThisMonth =
+      profile.aiCurrentMonth === currentMonth ? profile.aiMessagesUsedThisMonth : 0;
+
     return reply.status(200).send({
       id: profile.id,
       email: user.email,
@@ -43,7 +47,7 @@ export class UsersController {
       behaviourFocuses: profile.behaviourFocuses,
       averageCycleLength: profile.averageCycleLength,
       averagePeriodLength: profile.averagePeriodLength,
-      aiMessagesUsedThisMonth: profile.aiMessagesUsedThisMonth
+      aiMessagesUsedThisMonth
     });
   }
 
@@ -55,6 +59,20 @@ export class UsersController {
     if (!existing) {
       return reply.status(404).send({
         error: { code: 'NOT_FOUND', message: 'User profile not found.', requestId: request.requestId }
+      });
+    }
+
+    // Validate cross-field cycle/period consistency against merged profile values
+    const effectiveCycleLength = updates.averageCycleLength ?? existing.averageCycleLength;
+    const effectivePeriodLength = updates.averagePeriodLength ?? existing.averagePeriodLength;
+    if (effectivePeriodLength >= effectiveCycleLength) {
+      return reply.status(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'averagePeriodLength must be shorter than averageCycleLength.',
+          details: [{ field: 'averagePeriodLength', message: 'Period length must be shorter than cycle length.' }],
+          requestId: request.requestId
+        }
       });
     }
 
