@@ -115,4 +115,10 @@ override.tf.json
 .terraformrc
 terraform.rc
 
+# Python virtual environments & bytecode
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
 
