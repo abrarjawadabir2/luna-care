@@ -224,6 +224,7 @@ class LunaViewModel(application: Application) : AndroidViewModel(application) {
     // ==============================
 
     fun updateCycleSettings(cycleLength: Int, periodLength: Int) {
+        if (cycleLength !in 1..365 || periodLength !in 1..cycleLength) return
         viewModelScope.launch {
             val current = repository.getProfileSync() ?: Profile()
             repository.saveProfile(current.copy(

@@ -23,6 +23,18 @@ variable "domain" {
   default     = "lunacare.example"
 }
 
+variable "deployment_authorized" {
+  description = "Explicit authorization to change Cloudflare DNS, routing and edge rules"
+  type        = bool
+  default     = false
+}
+
+variable "api_origin_verified" {
+  description = "Private API and cloudflared origin are running, reachable and verified in staging"
+  type        = bool
+  default     = false
+}
+
 variable "environment" {
   description = "Environment name (prod, staging, dev)"
   type        = string

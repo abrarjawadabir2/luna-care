@@ -20,7 +20,14 @@
       "~/.ssh",
       "~/.gnupg",
       "~/.aws",
-      "~/.gemini"
+      "~/.gemini",
+      ".env",
+      ".env.*",
+      "*.jks",
+      "*.keystore",
+      "local.properties",
+      "docs-private",
+      "docs/private"
     ]
   }
 }

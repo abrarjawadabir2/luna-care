@@ -8,7 +8,9 @@ plugins {
 
 android {
   namespace = "com.example"
-  compileSdk { version = release(36) { minorApiLevel = 1 } }
+  // AndroidX Navigation 2.10 and Lifecycle 2.11 require API 37 for compilation.
+  // targetSdk remains 36 until app behavior changes are separately verified.
+  compileSdk = 37
 
   defaultConfig {
     applicationId = "com.aistudio.lunacare.fpyqkx"
